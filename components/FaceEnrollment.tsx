@@ -6,10 +6,11 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
-import { processImageForFaceRecognition } from '../lib/faceRecognition';
+import { processImageForFaceRecognition, showFaceRecognitionConfig } from '../lib/faceRecognition';
 
 interface FaceEnrollmentProps {
   onComplete: (embeddings: number[][]) => void; // Array of 4 embeddings
@@ -43,6 +44,11 @@ export default function FaceEnrollment({
     }
   }, [permission]);
 
+  // Show config on mount (for debugging - same in dev and production)
+  useEffect(() => {
+    showFaceRecognitionConfig();
+  }, []);
+
   async function captureFrame() {
     if (!cameraRef.current) {
       Alert.alert('Error', 'Camera not ready');
@@ -52,11 +58,13 @@ export default function FaceEnrollment({
     setLoading(true);
 
     try {
-      // Capture photo
+      // Capture photo - CRITICAL: skipProcessing=true in production builds
+      // Production builds apply additional processing that degrades image quality
+      // skipProcessing=true gives us the raw camera output, which works better for face detection
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
+        quality: 1.0, // MAXIMUM quality
         base64: false, // We'll save to file instead
-        skipProcessing: false,
+        skipProcessing: true, // CRITICAL: Skip processing in production builds to preserve image quality
       });
 
       if (!photo || !photo.uri) {
@@ -111,13 +119,37 @@ export default function FaceEnrollment({
         });
 
         // Process image to get embedding (128-dimensional face landmarks)
-        const result = await processImageForFaceRecognition(imageUris[i], base64Data);
+        console.log(`📸 Processing image ${i + 1}/4 on ${Platform.OS}...`);
+        console.log(`   Image size: ${Math.round(base64Data.length / 1024)} KB`);
         
+        const result = await processImageForFaceRecognition(imageUris[i], base64Data);
+
         if (!result || !result.embedding) {
-          // If any image fails, show error
+          let errorMessage = `Failed to process image ${i + 1}.`;
+          switch (result?.errorType) {
+            case 'NETWORK_ERROR':
+              errorMessage =
+                'Network error. Unable to reach the face recognition service. Check your internet connection and the service URL, then retry.';
+              break;
+            case 'SERVER_ERROR':
+              errorMessage =
+                `Server error while processing image ${i + 1}. Please try again.`;
+              break;
+            case 'CONFIG_ERROR':
+              errorMessage =
+                result?.errorMessage ||
+                'Face recognition URL is not configured. Set the HTTPS service URL and rebuild.';
+              break;
+            case 'NO_FACE_DETECTED':
+            default:
+              errorMessage =
+                `No face detected for image ${i + 1}. Please ensure good lighting and your face is centered.`;
+              break;
+          }
+
           Alert.alert(
             'Processing Failed',
-            `Failed to process image ${i + 1}. Face not detected.`,
+            errorMessage,
             [
               {
                 text: 'Retry',

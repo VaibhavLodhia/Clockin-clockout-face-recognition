@@ -1,32 +1,100 @@
-// Face Recognition - Uses Python OpenCV Service
+ // Face Recognition - Uses Python OpenCV Service
 // Reference: https://github.com/computervisioneng/face-attendance-system
 // Logic: Send image to Python service → Get 128-dimensional embedding → Compare (one-to-many matching)
 
 import * as FileSystem from 'expo-file-system';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
+import Constants from 'expo-constants';
 
-// Get Python service URL from environment variable
-// For iOS Simulator, use 127.0.0.1 instead of localhost
-// For physical device, use your computer's IP address
-let defaultBaseUrl = 'http://127.0.0.1:8000';
-if (Platform.OS === 'android') {
-  // Android emulator uses special IP
-  defaultBaseUrl = 'http://10.0.2.2:8000';
+type FaceServiceErrorType =
+  | 'NETWORK_ERROR'
+  | 'SERVER_ERROR'
+  | 'NO_FACE_DETECTED'
+  | 'CONFIG_ERROR';
+
+type FaceServiceResult =
+  | {
+      success: true;
+      embedding: number[];
+      face_box?: { x: number; y: number; w: number; h: number };
+      detection_method?: string;
+      faces_detected?: number;
+    }
+  | {
+      success: false;
+      errorType: FaceServiceErrorType;
+      message: string;
+      status?: number;
+    };
+
+// Get Python service URL - CRITICAL: In native builds, use Constants.expoConfig.extra
+// process.env only works in web/dev, native builds need Constants.expoConfig.extra
+const resolveFaceApiBaseUrl = (): { baseUrl: string; error?: string } => {
+  // Try process.env first (works in web/dev)
+  let url = process.env.EXPO_PUBLIC_FACE_RECOGNITION_URL;
+  
+  // If not found, try Constants.expoConfig.extra (works in native builds from EAS env vars)
+  if (!url && Constants.expoConfig?.extra?.faceRecognitionUrl) {
+    url = Constants.expoConfig.extra.faceRecognitionUrl;
+  }
+  
+  if (!url) {
+    return {
+      baseUrl: '',
+      error: 'Face recognition URL is not configured. Set EXPO_PUBLIC_FACE_RECOGNITION_URL to your HTTPS service URL (https://vaibhavlodhiya-face-recognition-api.hf.space).',
+    };
+  }
+
+  // Normalize: remove /api/face-recognition suffix and trailing slashes
+  const normalized = url
+    .replace(/\/api\/face-recognition\/?$/i, '')
+    .replace(/\/+$/, '');
+
+  if (!normalized.startsWith('https://')) {
+    return {
+      baseUrl: normalized,
+      error:
+        'Face recognition URL must be HTTPS for Android. Use your HTTPS service URL (https://vaibhavlodhiya-face-recognition-api.hf.space).',
+    };
+  }
+
+  return { baseUrl: normalized };
+};
+
+const { baseUrl: FACE_API_BASE_URL, error: FACE_API_CONFIG_ERROR } =
+  resolveFaceApiBaseUrl();
+
+const FACE_DETECTION_SERVICE_URL = FACE_API_BASE_URL
+  ? `${FACE_API_BASE_URL}/api/face-detection`
+  : '';
+const FACE_RECOGNITION_SERVICE_URL = FACE_API_BASE_URL
+  ? `${FACE_API_BASE_URL}/api/face-recognition`
+  : '';
+
+// ALWAYS log the URL being used (critical for debugging production builds)
+console.log('🔧 Face Detection Service URL:', FACE_DETECTION_SERVICE_URL || 'NOT SET');
+console.log('🔧 Face Recognition Service URL:', FACE_RECOGNITION_SERVICE_URL || 'NOT SET');
+console.log('🔧 process.env.EXPO_PUBLIC_FACE_RECOGNITION_URL:', process.env.EXPO_PUBLIC_FACE_RECOGNITION_URL || 'NOT SET');
+console.log('🔧 Constants.expoConfig.extra.faceRecognitionUrl:', Constants.expoConfig?.extra?.faceRecognitionUrl || 'NOT SET');
+console.log('🔧 Platform:', Platform.OS);
+console.log('🔧 Base URL (final):', FACE_API_BASE_URL || 'NOT SET');
+if (FACE_API_CONFIG_ERROR) {
+  console.warn('⚠️ Face API config error:', FACE_API_CONFIG_ERROR);
 }
 
-const BASE_URL = 
-  process.env.EXPO_PUBLIC_FACE_RECOGNITION_URL?.replace('/api/face-recognition', '') || 
-  defaultBaseUrl;
-
-const FACE_DETECTION_SERVICE_URL = `${BASE_URL}/api/face-detection`;
-const FACE_RECOGNITION_SERVICE_URL = `${BASE_URL}/api/face-recognition`;
-
-// Debug: Log the URL being used (only in development)
-if (__DEV__) {
-  console.log('🔧 Face Detection Service URL:', FACE_DETECTION_SERVICE_URL);
-  console.log('🔧 Face Recognition Service URL:', FACE_RECOGNITION_SERVICE_URL);
-  console.log('🔧 Environment variable:', process.env.EXPO_PUBLIC_FACE_RECOGNITION_URL || 'NOT SET (using default)');
-  console.log('🔧 Platform:', Platform.OS);
+// Show alert on first load with configuration (only once)
+let configShown = false;
+export function showFaceRecognitionConfig() {
+  if (!configShown) {
+    configShown = true;
+    const envVar = process.env.EXPO_PUBLIC_FACE_RECOGNITION_URL || Constants.expoConfig?.extra?.faceRecognitionUrl || 'NOT SET';
+    const configNote = FACE_API_CONFIG_ERROR ? `\n\nConfig Error: ${FACE_API_CONFIG_ERROR}` : '';
+    Alert.alert(
+      'Face Recognition Config',
+      `Service URL: ${FACE_RECOGNITION_SERVICE_URL || 'NOT SET'}\n\nEnv Var: ${envVar}\nPlatform: ${Platform.OS}\n\nFrom Constants: ${Constants.expoConfig?.extra?.faceRecognitionUrl || 'NOT SET'}${configNote}`,
+      [{ text: 'OK' }]
+    );
+  }
 }
 
 // Get Supabase session token for authentication
@@ -45,7 +113,7 @@ async function getAuthToken(): Promise<string | null> {
 // Test connection to Python service
 export async function testPythonServiceConnection(): Promise<boolean> {
   try {
-    const testUrl = BASE_URL;
+    const testUrl = FACE_API_BASE_URL;
     
     if (__DEV__) {
       console.log('🔍 Testing connection to:', testUrl);
@@ -59,6 +127,13 @@ export async function testPythonServiceConnection(): Promise<boolean> {
       controller.abort();
     }, 10000); // 10 second timeout
     
+    if (!testUrl) {
+      if (__DEV__) {
+        console.error('❌ Face API base URL not set');
+      }
+      return false;
+    }
+
     const response = await fetch(testUrl, {
       method: 'GET',
       signal: controller.signal,
@@ -95,6 +170,11 @@ export async function testPythonServiceConnection(): Promise<boolean> {
 // Call Python service for face detection (detection only, no embedding)
 export async function detectFace(imageBase64: string): Promise<{ face_detected: boolean; face_box?: { x: number; y: number; w: number; h: number }; detection_method?: string } | null> {
   try {
+    if (FACE_API_CONFIG_ERROR || !FACE_DETECTION_SERVICE_URL) {
+      console.error('❌ Face detection URL not configured:', FACE_API_CONFIG_ERROR || 'Missing URL');
+      return null;
+    }
+
     const token = await getAuthToken();
     
     if (!token) {
@@ -163,130 +243,138 @@ export async function detectFace(imageBase64: string): Promise<{ face_detected: 
 }
 
 // Call Python service to generate face embedding
-async function callPythonService(imageBase64: string): Promise<{ embedding: number[] | null; face_box?: { x: number; y: number; w: number; h: number }; detection_method?: string } | null> {
-  try {
-    const token = await getAuthToken();
-    
-    if (!token) {
-      console.warn('No auth token available, using test token');
-    }
+const REQUEST_TIMEOUT_MS = 10000;
+const NETWORK_RETRIES = 2;
 
-    // Prepare base64 image (remove data URL prefix if present)
-    const base64Data = imageBase64.includes(',') 
-      ? imageBase64.split(',')[1] 
-      : imageBase64;
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    console.log('📡 Calling Python service at:', FACE_RECOGNITION_SERVICE_URL);
-    console.log('📸 Image size:', base64Data.length, 'bytes');
-
-    // Make API call to Python service
-    // Add timeout and better error handling for iOS
-    // Face recognition can take 10-20 seconds on first call (model loading)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000); // 45 second timeout
-    
-    const response = await fetch(FACE_RECOGNITION_SERVICE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token || 'test-token'}`,
-      },
-      body: JSON.stringify({
-        image: base64Data,
-      }),
-      signal: controller.signal,
-    });
-    
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Python service error:', response.status, errorText);
-      console.error('💡 Make sure Python service is running on:', FACE_RECOGNITION_SERVICE_URL);
-      return null;
-    }
-
-    const result = await response.json();
-
-    if (result.success && result.embedding) {
-      console.log('✅ Face embedding generated by Python service, size:', result.dimension);
-      return {
-        embedding: result.embedding,
-        face_box: result.face_box,
-        detection_method: result.detection_method,
-      };
-    } else {
-      // "No face detected" is not an error - it's a normal response
-      if (result.error === 'No face detected' || result.message?.includes('No face detected')) {
-        console.log('⚠️ No face detected in image - please ensure face is clearly visible');
-        return { embedding: null };
-      }
-      
-      // Other errors are actual problems
-      console.log('⚠️ Python service response:', result.message);
-      if (result.error) {
-        console.error('❌ Python service error:', result.error);
-      }
-      return { embedding: null };
-    }
-  } catch (error: any) {
-    console.error('❌ Failed to call Python service:', error);
-    
-    // Check if it's a timeout
-    if (error.name === 'AbortError') {
-      console.error('⏱️ Request timeout - service took too long (>30s)');
-      console.error('💡 Check if Python service is running and responsive');
-      return null;
-    }
-    
-    // Check if it's a network error
-    if (error.message?.includes('Network request failed') || error.message?.includes('Failed to fetch')) {
-      console.error('🔴 Network error - service is not reachable');
-      console.error('');
-      console.error('💡 Troubleshooting steps:');
-      console.error('   1. ✅ Python service is running (we confirmed this)');
-      console.error('   2. Check .env file format:');
-      console.error('      EXPO_PUBLIC_FACE_RECOGNITION_URL=http://127.0.0.1:8000/api/face-recognition');
-      console.error('   3. For iOS Simulator: use http://127.0.0.1:8000/api/face-recognition');
-      console.error('   4. For physical iOS device: use http://10.0.0.34:8000/api/face-recognition');
-      console.error('   5. Restart Expo after changing .env: npx expo start --clear');
-      console.error('');
-      console.error('   Current URL being used:', FACE_RECOGNITION_SERVICE_URL);
-      console.error('   Platform:', Platform.OS);
-      
-      // Test if we can reach the root endpoint
-      try {
-        const testUrl = FACE_RECOGNITION_SERVICE_URL.replace('/api/face-recognition', '');
-        console.error('   Testing connection to:', testUrl);
-        const testController = new AbortController();
-        const testTimeout = setTimeout(() => testController.abort(), 5000);
-        const testResponse = await fetch(testUrl, { 
-          method: 'GET', 
-          signal: testController.signal 
-        });
-        clearTimeout(testTimeout);
-        if (testResponse.ok) {
-          console.error('   ✅ Can reach service root - issue might be with POST request');
-        } else {
-          console.error('   ❌ Cannot reach service root');
-        }
-      } catch (testError) {
-        console.error('   ❌ Cannot reach service at all');
-      }
-    } else {
-      console.error('   Error details:', error.message);
-    }
-    
-    return { embedding: null };
+async function callPythonService(imageBase64: string): Promise<FaceServiceResult> {
+  if (FACE_API_CONFIG_ERROR || !FACE_RECOGNITION_SERVICE_URL) {
+    return {
+      success: false,
+      errorType: 'CONFIG_ERROR',
+      message: FACE_API_CONFIG_ERROR || 'Face recognition URL is not configured.',
+    };
   }
+
+  const token = await getAuthToken();
+  if (!token) {
+    console.warn('No auth token available, using test token');
+  }
+
+  const base64Data = imageBase64.includes(',')
+    ? imageBase64.split(',')[1]
+    : imageBase64;
+
+  const body = JSON.stringify({ image: base64Data });
+
+  for (let attempt = 0; attempt <= NETWORK_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(FACE_RECOGNITION_SERVICE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token || 'test-token'}`,
+        },
+        body,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return {
+          success: false,
+          errorType: 'SERVER_ERROR',
+          status: response.status,
+          message: `Server error ${response.status}: ${errorText.substring(0, 200) || 'Unknown error'}`,
+        };
+      }
+
+      const result = await response.json();
+
+      if (result?.success && Array.isArray(result.embedding)) {
+        return {
+          success: true,
+          embedding: result.embedding,
+          face_box: result.face_box,
+          detection_method: result.detection_method,
+          faces_detected: result.faces_detected,
+        };
+      }
+
+      const errorText =
+        result?.error || result?.message || 'Unknown server response';
+
+      if (
+        result?.error === 'NO_FACE_DETECTED' ||
+        result?.message?.toLowerCase().includes('no face detected')
+      ) {
+        return {
+          success: false,
+          errorType: 'NO_FACE_DETECTED',
+          message: 'No face detected in the image.',
+        };
+      }
+
+      return {
+        success: false,
+        errorType: 'SERVER_ERROR',
+        message: errorText,
+      };
+    } catch (error: any) {
+      clearTimeout(timeout);
+      const isTimeout = error?.name === 'AbortError';
+      const message = isTimeout
+        ? 'Network timeout. Unable to reach face recognition service.'
+        : 'Network request failed. Unable to reach face recognition service.';
+
+      if (attempt < NETWORK_RETRIES) {
+        await sleep(500);
+        continue;
+      }
+
+      return {
+        success: false,
+        errorType: 'NETWORK_ERROR',
+        message,
+      };
+    }
+  }
+
+  return {
+    success: false,
+    errorType: 'NETWORK_ERROR',
+    message: 'Network request failed. Unable to reach face recognition service.',
+  };
 }
 
 // Process image for face recognition - MAIN FUNCTION
 export async function processImageForFaceRecognition(
   imageUri: string,
   base64?: string
-): Promise<{ embedding: number[] | null; face_box?: { x: number; y: number; w: number; h: number }; detection_method?: string } | null> {
+): Promise<{
+  embedding: number[] | null;
+  face_box?: { x: number; y: number; w: number; h: number };
+  detection_method?: string;
+  errorType?: FaceServiceErrorType;
+  errorMessage?: string;
+  status?: number;
+} | null> {
   try {
+    console.log(`🔍 Processing face recognition on ${Platform.OS}...`);
+    if (FACE_API_CONFIG_ERROR) {
+      return {
+        embedding: null,
+        errorType: 'CONFIG_ERROR',
+        errorMessage: FACE_API_CONFIG_ERROR,
+      };
+    }
+    
     // Read image data
     let imageData: string;
     if (base64) {
@@ -299,28 +387,45 @@ export async function processImageForFaceRecognition(
     }
 
     // Validate image
+    const imageSizeKB = Math.round(imageData.length / 1024);
+    console.log(`📸 Image size: ${imageSizeKB} KB`);
+    
     if (!imageData || imageData.length < 10000) {
-      console.log('Image too small or invalid');
-      return { embedding: null };
+      console.error('❌ Image too small or invalid:', imageData.length, 'bytes');
+      return {
+        embedding: null,
+        errorType: 'SERVER_ERROR',
+        errorMessage: 'Captured image is too small or invalid.',
+      };
     }
 
     // Call Python service to generate embedding
+    console.log(`📡 Calling Python service from ${Platform.OS}...`);
     const result = await callPythonService(imageData);
-    
-    if (!result || !result.embedding || result.embedding.length === 0) {
-      console.log('Failed to generate embedding from Python service');
-      return { embedding: null, face_box: result?.face_box, detection_method: result?.detection_method };
+
+    if (!result.success) {
+      return {
+        embedding: null,
+        errorType: result.errorType,
+        errorMessage: result.message,
+        status: result.status,
+      };
     }
-    
-    console.log('✅ Real face embedding generated, size:', result.embedding.length);
+
+    console.log(`✅ Face embedding generated on ${Platform.OS}, size:`, result.embedding.length);
     return {
       embedding: result.embedding,
       face_box: result.face_box,
       detection_method: result.detection_method,
     };
-  } catch (error) {
-    console.error('Failed to process image:', error);
-    return { embedding: null };
+  } catch (error: any) {
+    console.error(`❌ Failed to process image on ${Platform.OS}:`, error);
+    console.error('   Error message:', error.message);
+    return {
+      embedding: null,
+      errorType: 'NETWORK_ERROR',
+      errorMessage: 'Network request failed. Unable to reach face recognition service.',
+    };
   }
 }
 

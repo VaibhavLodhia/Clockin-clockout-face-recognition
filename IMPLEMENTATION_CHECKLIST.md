@@ -80,7 +80,7 @@ But if you have existing data, use the full migration script.
 
 ### If face detection doesn't show green box:
 1. Check Python service is running (`npm run dev`)
-2. Check network connectivity to `http://10.0.0.34:8000`
+2. Check network connectivity to your `https://vaibhavlodhiya-face-recognition-api.hf.space` URL
 3. Check Expo logs for errors
 4. Verify `/api/face-detection` endpoint is working
 

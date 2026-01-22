@@ -9,9 +9,9 @@ from typing import Optional
 
 import face_recognition
 import numpy as np
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image, ExifTags
+from PIL import Image
 from pydantic import BaseModel
 
 app = FastAPI(title="Face Recognition Service")
@@ -35,6 +35,7 @@ class FaceRecognitionResponse(BaseModel):
     success: bool
     embedding: Optional[list] = None
     dimension: Optional[int] = None
+    faces_detected: Optional[int] = None
     message: str
     error: Optional[str] = None
     face_box: Optional[dict] = None
@@ -67,7 +68,7 @@ def verify_token(authorization: Optional[str] = Header(None)) -> bool:
     return True
 
 
-def decode_base64_image(base64_string: str, max_size: int = 1000) -> np.ndarray:
+def decode_base64_image(base64_string: str, max_size: int = 3000) -> np.ndarray:
     """Decode base64 image string to numpy array for face_recognition
     Resizes large images to max_size for faster processing
     """
@@ -78,12 +79,17 @@ def decode_base64_image(base64_string: str, max_size: int = 1000) -> np.ndarray:
 
         # Decode base64
         image_data = base64.b64decode(base64_string)
+        print(f"📦 Decoded base64: {len(image_data)} bytes")
 
         # Convert to PIL Image
         image = Image.open(io.BytesIO(image_data))
+        print(
+            f"📐 Original image: {image.size[0]}x{image.size[1]}, format: {image.format}, mode: {image.mode}"
+        )
 
         # Convert to RGB if necessary
         if image.mode != "RGB":
+            print(f"🔄 Converting from {image.mode} to RGB")
             image = image.convert("RGB")
 
         # Handle EXIF orientation (images from phones may be rotated)
@@ -110,25 +116,37 @@ def decode_base64_image(base64_string: str, max_size: int = 1000) -> np.ndarray:
             # No EXIF data or can't read it, continue
             print(f"ℹ️ No EXIF orientation data (or error reading): {e}")
 
-        # Resize if image is too large (for faster face detection)
+        # CRITICAL: Don't resize too aggressively - production builds need larger images for face detection
+        # Only resize if image is REALLY large (over 3000px) to preserve face detail
         width, height = image.size
-        if width > max_size or height > max_size:
-            # Calculate new size maintaining aspect ratio
-            ratio = min(max_size / width, max_size / height)
+        print(f"📐 Image dimensions before resize: {width}x{height}")
+        if width > 3000 or height > 3000:
+            # Calculate new size maintaining aspect ratio, but keep it large
+            ratio = min(3000 / width, 3000 / height)
             new_width = int(width * ratio)
             new_height = int(height * ratio)
             image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            print(f"📐 Resized image from {width}x{height} to {new_width}x{new_height}")
+            print(
+                f"📐 Resized image from {width}x{height} to {new_width}x{new_height} (kept large for face detection)"
+            )
+        else:
+            print(
+                f"📐 Image size OK, not resizing (keeping {width}x{height} for better face detection)"
+            )
 
         # Convert to numpy array (face_recognition expects RGB format, uint8 dtype)
         image_array = np.array(image, dtype=np.uint8)
-        
+
         # Verify the array is correct format
         if len(image_array.shape) != 3 or image_array.shape[2] != 3:
-            raise ValueError(f"Invalid image shape: {image_array.shape}, expected (height, width, 3)")
-        
+            raise ValueError(
+                f"Invalid image shape: {image_array.shape}, expected (height, width, 3)"
+            )
+
         if image_array.dtype != np.uint8:
-            raise ValueError(f"Invalid image dtype: {image_array.dtype}, expected uint8")
+            raise ValueError(
+                f"Invalid image dtype: {image_array.dtype}, expected uint8"
+            )
 
         return image_array
     except Exception as e:
@@ -146,7 +164,7 @@ def detect_face_location(
         # Validate image array
         print(f"🔍 Image array shape: {image_array.shape}, dtype: {image_array.dtype}")
         print(f"🔍 Image value range: min={image_array.min()}, max={image_array.max()}")
-        
+
         # Ensure image is uint8 (0-255 range)
         if image_array.dtype != np.uint8:
             print(f"⚠️ Converting image from {image_array.dtype} to uint8")
@@ -155,36 +173,55 @@ def detect_face_location(
                 image_array = (image_array * 255).astype(np.uint8)
             else:
                 image_array = image_array.astype(np.uint8)
-        
+
         # Try detection with different upsampling values
         # Start with no upsampling (faster, works for larger faces)
         print("🔍 Trying face detection with number_of_times_to_upsample=0...")
         face_locations = face_recognition.face_locations(
-            image_array, 
-            model=model,
-            number_of_times_to_upsample=0
+            image_array, model=model, number_of_times_to_upsample=0
         )
-        
+
         if len(face_locations) == 0:
             # Try with upsampling=1 (upsamples 1x)
             print("🔍 No face found, trying with number_of_times_to_upsample=1...")
             face_locations = face_recognition.face_locations(
-                image_array, 
-                model=model,
-                number_of_times_to_upsample=1
+                image_array, model=model, number_of_times_to_upsample=1
             )
-        
+
         if len(face_locations) == 0:
             # Try with upsampling=2 (upsamples 2x - slower but detects smaller faces)
             print("🔍 No face found, trying with number_of_times_to_upsample=2...")
             face_locations = face_recognition.face_locations(
-                image_array, 
-                model=model,
-                number_of_times_to_upsample=2
+                image_array, model=model, number_of_times_to_upsample=2
             )
 
         if len(face_locations) == 0:
-            print("❌ No face detected with any upsampling value")
+            # Try with CNN model (more accurate but slower) - CRITICAL for production builds
+            print("🔍 No face found with HOG, trying CNN model (more accurate)...")
+            face_locations = face_recognition.face_locations(
+                image_array, model="cnn", number_of_times_to_upsample=1
+            )
+
+        if len(face_locations) == 0:
+            # Try CNN with upsampling=2 (most thorough but slowest)
+            print("🔍 No face found with CNN upsampling=1, trying CNN upsampling=2...")
+            face_locations = face_recognition.face_locations(
+                image_array, model="cnn", number_of_times_to_upsample=2
+            )
+
+        if len(face_locations) == 0:
+            # Last resort: Try HOG with upsampling=3 (very thorough)
+            print("🔍 No face found, trying HOG with upsampling=3 (last resort)...")
+            face_locations = face_recognition.face_locations(
+                image_array, model="hog", number_of_times_to_upsample=3
+            )
+
+        if len(face_locations) == 0:
+            print("❌ No face detected with ANY method (HOG/CNN, upsampling 0/1/2/3)")
+            print(f"   Image dimensions: {image_array.shape[1]}x{image_array.shape[0]}")
+            print(f"   Image value range: {image_array.min()}-{image_array.max()}")
+            print(f"   Image dtype: {image_array.dtype}")
+            print(f"   Image shape: {image_array.shape}")
             return None
 
         print(f"✅ Face detected! Found {len(face_locations)} face(s)")
@@ -193,6 +230,7 @@ def detect_face_location(
     except Exception as e:
         print(f"❌ Exception in face detection: {str(e)}")
         import traceback
+
         traceback.print_exc()
         raise ValueError(f"Failed to detect face: {str(e)}")
 
@@ -255,10 +293,10 @@ async def face_detection_endpoint(
         "🔍 Face detection request received, image size:", len(request.image), "bytes"
     )
     try:
-        # Decode base64 image
+        # Decode base64 image - use larger max_size (2000px) for better face detection in production builds
         print("📸 Decoding image...")
         try:
-            image_array = decode_base64_image(request.image)
+            image_array = decode_base64_image(request.image, max_size=3000)
             print("✅ Image decoded, shape:", image_array.shape)
         except ValueError as e:
             print("❌ Image decoding failed:", str(e))
@@ -275,7 +313,9 @@ async def face_detection_endpoint(
         detection_method = "hog"
 
         # If no face detected, try with original larger image (if it was resized)
-        if face_location is None and (image_array.shape[0] < 500 or image_array.shape[1] < 500):
+        if face_location is None and (
+            image_array.shape[0] < 500 or image_array.shape[1] < 500
+        ):
             print("⚠️ No face detected with resized image, trying with larger size...")
             # Re-decode without resizing to try with original size
             try:
@@ -293,7 +333,9 @@ async def face_detection_endpoint(
                     ratio = min(2000 / width, 2000 / height)
                     new_width = int(width * ratio)
                     new_height = int(height * ratio)
-                    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    image = image.resize(
+                        (new_width, new_height), Image.Resampling.LANCZOS
+                    )
                 image_array_large = np.array(image)
                 print(f"🔍 Retrying with larger image: {image_array_large.shape}")
                 face_location = detect_face_location(image_array_large, model="hog")
@@ -341,7 +383,9 @@ async def face_detection_endpoint(
 
 @app.post("/api/face-recognition", response_model=FaceRecognitionResponse)
 async def face_recognition_endpoint(
-    request: FaceRecognitionRequest, token_verified: bool = Depends(verify_token)
+    request: FaceRecognitionRequest,
+    http_request: Request,
+    token_verified: bool = Depends(verify_token),
 ):
     """
     Generate face embedding from image
@@ -352,14 +396,23 @@ async def face_recognition_endpoint(
     Returns:
         FaceRecognitionResponse with 128-dimensional embedding and face_box
     """
+    client_host = http_request.client.host if http_request.client else "unknown"
+    origin = http_request.headers.get("origin", "unknown")
     print(
-        "🎯 Face recognition request received, image size:", len(request.image), "bytes"
+        "🎯 Face recognition request received",
+        "| image size:",
+        len(request.image),
+        "bytes",
+        "| client:",
+        client_host,
+        "| origin:",
+        origin,
     )
     try:
-        # Decode base64 image
+        # Decode base64 image - use larger max_size (3000px) for better face detection in production builds
         print("📸 Decoding image...")
         try:
-            image_array = decode_base64_image(request.image)
+            image_array = decode_base64_image(request.image, max_size=3000)
             print("✅ Image decoded, shape:", image_array.shape)
         except ValueError as e:
             return FaceRecognitionResponse(
@@ -373,7 +426,9 @@ async def face_recognition_endpoint(
         detection_method = "hog"
 
         # If no face detected, try with original larger image (if it was resized)
-        if face_location is None and (image_array.shape[0] < 500 or image_array.shape[1] < 500):
+        if face_location is None and (
+            image_array.shape[0] < 500 or image_array.shape[1] < 500
+        ):
             print("⚠️ No face detected with resized image, trying with larger size...")
             # Re-decode without resizing to try with original size
             try:
@@ -391,7 +446,9 @@ async def face_recognition_endpoint(
                     ratio = min(2000 / width, 2000 / height)
                     new_width = int(width * ratio)
                     new_height = int(height * ratio)
-                    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                    image = image.resize(
+                        (new_width, new_height), Image.Resampling.LANCZOS
+                    )
                 image_array_large = np.array(image)
                 print(f"🔍 Retrying with larger image: {image_array_large.shape}")
                 face_location = detect_face_location(image_array_large, model="hog")
@@ -406,7 +463,8 @@ async def face_recognition_endpoint(
             return FaceRecognitionResponse(
                 success=False,
                 message="No face detected in image",
-                error="No face detected",
+                error="NO_FACE_DETECTED",
+                faces_detected=0,
             )
 
         print("✅ Face detected, generating embedding...")
@@ -425,7 +483,8 @@ async def face_recognition_endpoint(
             return FaceRecognitionResponse(
                 success=False,
                 message="No face detected in image",
-                error="No face detected",
+                error="NO_FACE_DETECTED",
+                faces_detected=0,
             )
 
         # Convert face_location to face_box format
@@ -443,6 +502,7 @@ async def face_recognition_endpoint(
             success=True,
             embedding=embedding,
             dimension=len(embedding),
+            faces_detected=1,
             face_box=face_box,
             detection_method=detection_method,
             message="Face embedding generated successfully",

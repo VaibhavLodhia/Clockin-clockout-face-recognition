@@ -29,19 +29,19 @@ Create or update `.env` file in the **project root** (not in python-service):
 ```env
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-EXPO_PUBLIC_FACE_RECOGNITION_URL=http://localhost:8000/api/face-recognition
+EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
 ```
 
 ## Step 3: Use Correct URL for Your Platform
 
 ### iOS Simulator
 ```env
-EXPO_PUBLIC_FACE_RECOGNITION_URL=http://localhost:8000/api/face-recognition
+EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
 ```
 
 ### Android Emulator
 ```env
-EXPO_PUBLIC_FACE_RECOGNITION_URL=http://10.0.2.2:8000/api/face-recognition
+EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
 ```
 
 ### Physical Device (Android/iOS)
@@ -50,11 +50,11 @@ EXPO_PUBLIC_FACE_RECOGNITION_URL=http://10.0.2.2:8000/api/face-recognition
    ```powershell
    ipconfig
    ```
-   Look for "IPv4 Address" under your WiFi adapter (e.g., `192.168.1.100`)
+   Look for "IPv4 Address" under your WiFi adapter (only needed for local testing)
 
 2. **Update .env:**
    ```env
-   EXPO_PUBLIC_FACE_RECOGNITION_URL=http://192.168.1.100:8000/api/face-recognition
+EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
    ```
 
 3. **Make sure:**
@@ -75,12 +75,12 @@ npx expo start --clear
 
 **Test if the service is working:**
 
-1. **Open browser:** `http://localhost:8000`
-   - Should show: `{"service":"Face Recognition Service (OpenCV DNN)","status":"running"}`
+1. **Open browser:** `https://vaibhavlodhiya-face-recognition-api.hf.space`
+   - Should show: `{"service":"Face Recognition Service","status":"running","version":"1.0.0"}`
 
 2. **Or use curl:**
    ```powershell
-   curl http://localhost:8000
+   curl https://vaibhavlodhiya-face-recognition-api.hf.space
    ```
 
 ## Step 6: Check Windows Firewall
@@ -107,10 +107,10 @@ npx expo start --clear
 
 1. **Check Python service logs** - look for errors when you try to use face recognition
 2. **Check Expo logs** - look for the URL being used
-3. **Try accessing service in browser** - `http://localhost:8000` should work
+3. **Try accessing service in browser** - `https://vaibhavlodhiya-face-recognition-api.hf.space` should work
 4. **Test with curl:**
    ```powershell
-   curl -X POST http://localhost:8000/api/face-recognition -H "Authorization: Bearer test-token" -H "Content-Type: application/json" -d "{\"image\":\"test\"}"
+   curl -X POST https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition -H "Authorization: Bearer test-token" -H "Content-Type: application/json" -d "{\"image\":\"test\"}"
    ```
 
 ## Common Issues

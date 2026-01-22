@@ -19,10 +19,10 @@
     "production": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FACE_RECOGNITION_URL": "https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition"
       }
-    },
-    "production-web": {
-      "platform": "web"
     }
   },
   "submit": {

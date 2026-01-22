@@ -78,6 +78,9 @@ export default function SignupScreen() {
       // Trim and validate email
       const trimmedEmail = email.trim().toLowerCase();
       
+      console.log('📝 Starting signup for:', trimmedEmail);
+      console.log('🔧 Supabase URL configured:', !!supabase);
+      
       // Create auth user with metadata
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: trimmedEmail,
@@ -92,12 +95,18 @@ export default function SignupScreen() {
       });
 
       if (authError) {
+        console.error('❌ Signup error:', authError);
+        console.error('   Error code:', authError.status);
+        console.error('   Error message:', authError.message);
+        
         // Better error messages
         let errorMessage = authError.message;
-        if (authError.message.includes('invalid')) {
+        if (authError.message.includes('invalid') || authError.message.includes('Invalid')) {
           errorMessage = 'Please enter a valid email address';
-        } else if (authError.message.includes('already registered')) {
+        } else if (authError.message.includes('already registered') || authError.message.includes('already exists')) {
           errorMessage = 'This email is already registered. Please login instead.';
+        } else if (authError.message.includes('Network') || authError.message.includes('network') || authError.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
         }
         Alert.alert('Error', errorMessage);
         setLoading(false);

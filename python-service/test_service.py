@@ -24,7 +24,7 @@ def test_face_recognition_service():
         image_base64 = base64.b64encode(image_data).decode('utf-8')
     
     # Service URL
-    service_url = "http://localhost:8000/api/face-recognition"
+    service_url = "https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition"
     
     # Headers
     headers = {

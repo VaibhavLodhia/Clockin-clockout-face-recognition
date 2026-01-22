@@ -46,8 +46,8 @@ Mobile App (compares embeddings)
    ```
 
 6. **Get the service URL:**
-   - Railway will provide a URL like: `https://your-service.railway.app`
-   - Your API endpoint will be: `https://your-service.railway.app/api/face-recognition`
+   - Your base URL: `https://vaibhavlodhiya-face-recognition-api.hf.space`
+   - Your API endpoint: `https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition`
 
 ### Option B: Render
 
@@ -60,7 +60,24 @@ Mobile App (compares embeddings)
    - **Environment:** Python 3
 5. Deploy
 
-### Option C: Local Development (for testing)
+### Option C: Hugging Face Spaces (Docker)
+
+1. **Create accounts (required):**
+   - **Hugging Face** (for Spaces)
+   - **GitHub** (optional but easiest to connect repo)
+2. **Ensure Dockerfile exists** in `python-service/` (provided in repo).
+3. **Create a new Space:**
+   - Go to https://huggingface.co/spaces
+   - New Space → **Docker** as SDK
+4. **Connect the repo** (or upload the `python-service/` folder).
+5. **Set the app port**:
+   - Hugging Face expects port **7860** (already set in Dockerfile).
+6. **Build & deploy** and wait for Space to go live.
+7. **Get the service URL:**
+   - Your base URL will look like: `https://your-space.hf.space`
+   - Your API endpoint will be: `https://your-space.hf.space/api/face-recognition`
+
+### Option D: Local Development (for testing)
 
 ```bash
 cd python-service
@@ -68,7 +85,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Service runs on `http://localhost:8000`
+Service runs on `https://vaibhavlodhiya-face-recognition-api.hf.space`
 
 ## Step 2: Update React Native App
 
@@ -79,7 +96,7 @@ Service runs on `http://localhost:8000`
 
 2. **Update `.env` with your service URL:**
    ```env
-   EXPO_PUBLIC_FACE_RECOGNITION_URL=https://your-service.railway.app/api/face-recognition
+   EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
    ```
 
 3. **Restart Expo:**

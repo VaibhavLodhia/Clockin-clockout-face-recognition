@@ -40,16 +40,14 @@ python test_service.py
    ```env
    EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
    EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   EXPO_PUBLIC_FACE_RECOGNITION_URL=http://localhost:8000/api/face-recognition
+  EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
    ```
 
 2. **For Android Emulator/Physical Device:**
-   - If using Android emulator, use: `http://10.0.2.2:8000/api/face-recognition`
-   - If using physical device on same network, use your computer's IP: `http://192.168.x.x:8000/api/face-recognition`
-   - To find your IP: `ipconfig` (Windows) or `ifconfig` (Mac/Linux)
+   - Use: `https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition`
 
 3. **For iOS Simulator:**
-   - Use: `http://localhost:8000/api/face-recognition`
+   - Use: `https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition`
 
 ## Step 3: Start Expo App
 
@@ -118,7 +116,7 @@ The Python service terminal will show:
 
 2. **Update `.env` with deployed URL:**
    ```env
-   EXPO_PUBLIC_FACE_RECOGNITION_URL=https://your-service.railway.app/api/face-recognition
+   EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
    ```
 
 3. **Restart Expo:**

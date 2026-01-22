@@ -5,7 +5,7 @@
 ```env
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_url_here
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key_here
-EXPO_PUBLIC_FACE_RECOGNITION_URL=http://127.0.0.1:8000/api/face-recognition
+EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
 ```
 
 ## Important Rules:
@@ -15,8 +15,8 @@ EXPO_PUBLIC_FACE_RECOGNITION_URL=http://127.0.0.1:8000/api/face-recognition
    - ❌ Wrong: `KEY = value`
 
 2. **No quotes**
-   - ✅ Correct: `URL=http://127.0.0.1:8000/api/face-recognition`
-   - ❌ Wrong: `URL="http://127.0.0.1:8000/api/face-recognition"`
+   - ✅ Correct: `URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition`
+   - ❌ Wrong: `URL="https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition"`
 
 3. **Must start with `EXPO_PUBLIC_`**
    - ✅ Correct: `EXPO_PUBLIC_FACE_RECOGNITION_URL=...`
@@ -28,14 +28,14 @@ EXPO_PUBLIC_FACE_RECOGNITION_URL=http://127.0.0.1:8000/api/face-recognition
 
 ## For iOS Simulator:
 ```env
-EXPO_PUBLIC_FACE_RECOGNITION_URL=http://127.0.0.1:8000/api/face-recognition
+EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
 ```
 
 ## For Physical iOS Device:
 ```env
-EXPO_PUBLIC_FACE_RECOGNITION_URL=http://10.0.0.34:8000/api/face-recognition
+EXPO_PUBLIC_FACE_RECOGNITION_URL=https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
 ```
-(Use your computer's IP address - we found yours is `10.0.0.34`)
+(Use your HTTPS service URL)
 
 ## After Updating .env:
 
@@ -49,8 +49,8 @@ EXPO_PUBLIC_FACE_RECOGNITION_URL=http://10.0.0.34:8000/api/face-recognition
 
 When app starts, check Expo logs. You should see:
 ```
-🔧 Face Recognition Service URL: http://127.0.0.1:8000/api/face-recognition
-🔧 Environment variable: http://127.0.0.1:8000/api/face-recognition
+🔧 Face Recognition Service URL: https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
+🔧 Environment variable: https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition
 🔧 Platform: ios
 ```
 

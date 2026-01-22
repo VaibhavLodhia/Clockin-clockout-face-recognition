@@ -1,8 +1,42 @@
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+// Get environment variables - try multiple sources
+// 1. From process.env (works in development)
+// 2. From Constants.expoConfig.extra (works in native builds)
+// 3. Fallback to placeholder (should never happen in production)
+const supabaseUrl = 
+  process.env.EXPO_PUBLIC_SUPABASE_URL || 
+  Constants.expoConfig?.extra?.supabaseUrl || 
+  'https://placeholder.supabase.co';
+
+const supabaseAnonKey = 
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 
+  Constants.expoConfig?.extra?.supabaseAnonKey || 
+  'placeholder-key';
+
+// Validate configuration
+if (!supabaseUrl || supabaseUrl === 'https://placeholder.supabase.co' || !supabaseUrl.includes('supabase.co')) {
+  console.error('❌ Invalid Supabase URL:', supabaseUrl);
+  console.error('   Please check your .env file or EAS secrets');
+}
+
+if (!supabaseAnonKey || supabaseAnonKey === 'placeholder-key' || supabaseAnonKey.length < 50) {
+  console.error('❌ Invalid Supabase Anon Key');
+  console.error('   Please check your .env file or EAS secrets');
+}
+
+// Log configuration (only in development)
+if (__DEV__) {
+  console.log('🔧 Supabase Configuration:');
+  console.log('   URL:', supabaseUrl?.substring(0, 40) + '...');
+  console.log('   Key:', supabaseAnonKey?.substring(0, 20) + '...');
+  console.log('   Platform:', Platform.OS);
+  console.log('   From process.env:', !!process.env.EXPO_PUBLIC_SUPABASE_URL);
+  console.log('   From Constants:', !!Constants.expoConfig?.extra?.supabaseUrl);
+  console.log('   URL Valid:', supabaseUrl?.includes('supabase.co'));
+}
 
 // Use localStorage for web, AsyncStorage for native
 let storage: any;

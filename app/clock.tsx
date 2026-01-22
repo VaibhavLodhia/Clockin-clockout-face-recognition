@@ -194,11 +194,12 @@ export default function ClockScreen() {
     setLoading(true);
 
     try {
-      // Capture photo
+      // Capture photo - CRITICAL: skipProcessing=true in production builds
+      // Production builds apply additional processing that degrades image quality
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
+        quality: 1.0, // MAXIMUM quality
         base64: false, // We'll save to file instead
-        skipProcessing: false,
+        skipProcessing: true, // CRITICAL: Skip processing to preserve image quality for face detection
       });
 
       if (!photo || !photo.uri) {
@@ -228,8 +229,18 @@ export default function ClockScreen() {
 
       // Process image to get embedding (128-dimensional face landmarks)
       const result = await processImageForFaceRecognition(localUri, base64Data);
-      
+
       if (!result || !result.embedding) {
+        if (result?.errorType && result.errorType !== 'NO_FACE_DETECTED') {
+          const message =
+            result.errorMessage ||
+            'Face recognition service is unavailable. Please try again.';
+          Alert.alert('Face Recognition Error', message);
+          setRecognitionResult(null);
+          setLoading(false);
+          return;
+        }
+
         const newAttempts = faceAttempts + 1;
         setFaceAttempts(newAttempts);
         setRecognitionResult({

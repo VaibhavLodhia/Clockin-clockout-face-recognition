@@ -49,8 +49,12 @@ export default {
     ],
     scheme: "employee-clock-app",
     extra: {
-      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
-      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      eas: {
+        projectId: "97f90a5d-3eb3-4a91-84dc-d9a7783776fd"
+      },
+      // These are available in native apps via Constants.expoConfig.extra
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://mygapgtftnfvtspvbpxi.supabase.co',
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15Z2FwZ3RmdG5mdnRzcHZicHhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3NDI4NDksImV4cCI6MjA4MTMxODg0OX0.qNQv7GwfPb6RjX-s4TzFOARvoHD8_Fd7shc0hzvER7I',
       faceRecognitionUrl: process.env.EXPO_PUBLIC_FACE_RECOGNITION_URL,
     }
   }

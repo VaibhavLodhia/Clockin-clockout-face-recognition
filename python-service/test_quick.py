@@ -11,7 +11,7 @@ test_image_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mN
 def test_service():
     """Quick test of the face recognition service"""
     
-    service_url = "http://localhost:8000/api/face-recognition"
+    service_url = "https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition"
     
     headers = {
         "Authorization": "Bearer test-token",
