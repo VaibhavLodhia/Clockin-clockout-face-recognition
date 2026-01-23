@@ -27,6 +27,8 @@ export default function EmployeeDetailScreen() {
   const [selectedWeek, setSelectedWeek] = useState(getWeekForDate(new Date()));
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
   const [startTime, setStartTime] = useState('9:00 AM');
   const [endTime, setEndTime] = useState('5:00 PM');
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
@@ -43,6 +45,12 @@ export default function EmployeeDetailScreen() {
   useEffect(() => {
     loadTimeLogs();
   }, [selectedWeek, employeeId]);
+
+  useEffect(() => {
+    if (showManualEntry) {
+      setCalendarMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+    }
+  }, [showManualEntry, selectedDate]);
 
   async function loadUserData() {
     const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -458,6 +466,7 @@ export default function EmployeeDetailScreen() {
     const clockOut = log.clock_out ? new Date(log.clock_out) : null;
 
     setSelectedDate(clockIn);
+    setCalendarMonth(new Date(clockIn.getFullYear(), clockIn.getMonth(), 1));
     setStartTime(formatTime(clockIn));
     setEndTime(clockOut ? formatTime(clockOut) : '5:00 PM');
     setEditingLogId(log.id);
@@ -577,6 +586,7 @@ export default function EmployeeDetailScreen() {
               onPress={() => {
                 setEditingLogId(null);
                 setSelectedDate(new Date());
+                setCalendarMonth(new Date());
                 setStartTime('9:00 AM');
                 setEndTime('5:00 PM');
                 setShowManualEntry(true);
@@ -647,50 +657,19 @@ export default function EmployeeDetailScreen() {
 
             {/* Date Picker */}
             <Text style={styles.modalLabel}>Date</Text>
-            <Text style={styles.modalDateText}>
-              {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-            </Text>
-            <View style={styles.dateSelector}>
-              <TouchableOpacity
-                style={styles.dateOptionButton}
-                onPress={() => {
-                  const today = new Date();
-                  setSelectedDate(today);
-                }}
-              >
-                <Text style={styles.dateOptionText}>Today</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dateOptionButton}
-                onPress={() => {
-                  const yesterday = new Date();
-                  yesterday.setDate(yesterday.getDate() - 1);
-                  setSelectedDate(yesterday);
-                }}
-              >
-                <Text style={styles.dateOptionText}>Yesterday</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dateOptionButton}
-                onPress={() => {
-                  const lastWeek = new Date(selectedDate);
-                  lastWeek.setDate(lastWeek.getDate() - 7);
-                  setSelectedDate(lastWeek);
-                }}
-              >
-                <Text style={styles.dateOptionText}>-7 Days</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.dateOptionButton}
-                onPress={() => {
-                  const nextWeek = new Date(selectedDate);
-                  nextWeek.setDate(nextWeek.getDate() + 7);
-                  setSelectedDate(nextWeek);
-                }}
-              >
-                <Text style={styles.dateOptionText}>+7 Days</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={styles.modalDateText}
+              onPress={() => setShowCalendarPicker(true)}
+            >
+              <Text style={styles.modalDateTextValue}>
+                {selectedDate.toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+              </Text>
+            </TouchableOpacity>
 
             {/* Start Time */}
             <Text style={styles.modalLabel}>Start Time</Text>
@@ -732,6 +711,112 @@ export default function EmployeeDetailScreen() {
       </Modal>
 
       {/* Time Picker Modals */}
+      {showCalendarPicker && (
+        <Modal
+          visible={showCalendarPicker}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setShowCalendarPicker(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.calendarModalContent}>
+              <Text style={styles.modalTitle}>Select Date</Text>
+              <View style={styles.calendarHeader}>
+                <TouchableOpacity
+                  style={styles.calendarNavButton}
+                  onPress={() =>
+                    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))
+                  }
+                >
+                  <Text style={styles.calendarNavText}>←</Text>
+                </TouchableOpacity>
+                <Text style={styles.calendarMonthText}>
+                  {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                </Text>
+                <TouchableOpacity
+                  style={styles.calendarNavButton}
+                  onPress={() =>
+                    setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))
+                  }
+                >
+                  <Text style={styles.calendarNavText}>→</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.calendarWeekRow}>
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                  <Text key={day} style={styles.calendarWeekday}>
+                    {day}
+                  </Text>
+                ))}
+              </View>
+              <View style={styles.calendarGrid}>
+                {(() => {
+                  const year = calendarMonth.getFullYear();
+                  const month = calendarMonth.getMonth();
+                  const firstDay = new Date(year, month, 1).getDay();
+                  const daysInMonth = new Date(year, month + 1, 0).getDate();
+                  const cells: (Date | null)[] = [];
+
+                  for (let i = 0; i < firstDay; i += 1) {
+                    cells.push(null);
+                  }
+
+                  for (let day = 1; day <= daysInMonth; day += 1) {
+                    cells.push(new Date(year, month, day));
+                  }
+
+                  return cells.map((date, idx) => {
+                    if (!date) {
+                      return <View key={`empty-${idx}`} style={styles.calendarDayEmpty} />;
+                    }
+
+                    const isSelected =
+                      date.getFullYear() === selectedDate.getFullYear() &&
+                      date.getMonth() === selectedDate.getMonth() &&
+                      date.getDate() === selectedDate.getDate();
+                    const today = new Date();
+                    const isToday =
+                      date.getFullYear() === today.getFullYear() &&
+                      date.getMonth() === today.getMonth() &&
+                      date.getDate() === today.getDate();
+
+                    return (
+                      <TouchableOpacity
+                        key={date.toISOString()}
+                        style={[
+                          styles.calendarDay,
+                          isToday && styles.calendarDayToday,
+                          isSelected && styles.calendarDaySelected,
+                        ]}
+                        onPress={() => {
+                          setSelectedDate(date);
+                          setShowCalendarPicker(false);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.calendarDayText,
+                            isSelected && styles.calendarDayTextSelected,
+                          ]}
+                        >
+                          {date.getDate()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  });
+                })()}
+              </View>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={() => setShowCalendarPicker(false)}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
+
       {showStartTimePicker && (
         <Modal
           visible={showStartTimePicker}
@@ -974,32 +1059,86 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   modalDateText: {
-    fontSize: 16,
     padding: 10,
     backgroundColor: '#f9f9f9',
     borderRadius: 8,
     marginBottom: 10,
   },
-  dateSelector: {
+  modalDateTextValue: {
+    fontSize: 16,
+    color: '#000',
+  },
+  calendarModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 20,
+    width: '90%',
+    maxWidth: 420,
+  },
+  calendarHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 10,
   },
-  dateOptionButton: {
-    flex: 1,
-    minWidth: '45%',
+  calendarNavButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
     backgroundColor: '#f0f0f0',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ddd',
   },
-  dateOptionText: {
+  calendarNavText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  calendarMonthText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  calendarWeekday: {
+    width: '14.28%',
+    textAlign: 'center',
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  calendarDay: {
+    width: '14.28%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  calendarDayEmpty: {
+    width: '14.28%',
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  calendarDayToday: {
+    backgroundColor: '#e8f0fe',
+  },
+  calendarDaySelected: {
+    backgroundColor: '#000',
+  },
+  calendarDayText: {
     fontSize: 14,
     color: '#333',
-    fontWeight: '500',
+  },
+  calendarDayTextSelected: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   timePickerButton: {
     borderWidth: 1,
