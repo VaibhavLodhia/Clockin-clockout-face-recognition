@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
-import { getUserData, logAuditEvent } from '../lib/utils';
+import { getUserData, logAuditEvent, deleteEmployeeUser } from '../lib/utils';
 import { getWeekForDate, getPreviousWeek, getNextWeek, formatWeekRange } from '../lib/weekUtils';
 import { formatTime, formatTimeRange, calculateHours, formatHours, generateTimeOptions, timeStringToDate, timeRangesOverlap } from '../lib/timeUtils';
 import { getCurrentWorkCycle } from '../lib/workCycle';
@@ -415,6 +415,57 @@ export default function EmployeeDetailScreen() {
     await performDelete(logId);
   }
 
+  async function handleDeleteEmployee() {
+    if (!user || !employee) {
+      Alert.alert('Error', 'User or employee data not loaded');
+      return;
+    }
+
+    if (employee.role !== 'employee') {
+      Alert.alert('Error', 'Only employees can be deleted');
+      return;
+    }
+
+    const confirmMessage =
+      'This will permanently delete the employee and ALL related time logs. This cannot be undone.';
+
+    if (Platform.OS === 'web') {
+      const confirmed = (window as any).confirm(confirmMessage);
+      if (!confirmed) return;
+      await performDeleteEmployee();
+      return;
+    }
+
+    Alert.alert('Delete Employee', confirmMessage, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await performDeleteEmployee();
+        },
+      },
+    ]);
+  }
+
+  async function performDeleteEmployee() {
+    const result = await deleteEmployeeUser(employeeId);
+    if (!result.success) {
+      Alert.alert('Error', result.error || 'Failed to delete employee');
+      return;
+    }
+
+    Alert.alert('Success', 'Employee deleted successfully');
+
+    const cafeSlug =
+      employee?.cafe_location?.toLowerCase().replace(/\s+/g, '-') || '';
+    if (cafeSlug) {
+      router.replace(`/cafe/${cafeSlug}`);
+    } else {
+      router.replace('/admin');
+    }
+  }
+
   async function performDelete(logId: string) {
     try {
       console.log('🗑️ Deleting time entry:', {
@@ -476,9 +527,16 @@ export default function EmployeeDetailScreen() {
   function groupTimeLogsByDay() {
     const grouped: { [key: string]: any[] } = {};
 
+    const getLocalDateKey = (dateValue: Date) => {
+      const year = dateValue.getFullYear();
+      const month = `${dateValue.getMonth() + 1}`.padStart(2, '0');
+      const day = `${dateValue.getDate()}`.padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     timeLogs.forEach(log => {
       const date = new Date(log.clock_in);
-      const dateKey = date.toISOString().split('T')[0];
+      const dateKey = getLocalDateKey(date);
 
       if (!grouped[dateKey]) {
         grouped[dateKey] = [];
@@ -503,10 +561,19 @@ export default function EmployeeDetailScreen() {
 
   function calculateDaysWorked(): number {
     const dates = new Set<string>();
+
+    const getLocalDateKey = (dateValue: Date) => {
+      const year = dateValue.getFullYear();
+      const month = `${dateValue.getMonth() + 1}`.padStart(2, '0');
+      const day = `${dateValue.getDate()}`.padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     timeLogs.forEach(log => {
       const date = new Date(log.clock_in);
-      dates.add(date.toISOString().split('T')[0]);
+      dates.add(getLocalDateKey(date));
     });
+
     return dates.size;
   }
 
@@ -567,7 +634,15 @@ export default function EmployeeDetailScreen() {
 
         {/* Admin Controls */}
         <View style={styles.controlsSection}>
-          <Text style={styles.sectionTitle}>Admin Controls</Text>
+          <View style={styles.controlsHeader}>
+            <Text style={styles.sectionTitle}>Admin Controls</Text>
+            <TouchableOpacity
+              style={styles.deleteEmployeeLink}
+              onPress={handleDeleteEmployee}
+            >
+              <Text style={styles.deleteEmployeeLinkText}>Delete Employee</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.controlsRow}>
             <TouchableOpacity
               style={[styles.controlButton, styles.clockInButton]}
@@ -603,7 +678,8 @@ export default function EmployeeDetailScreen() {
           {Object.entries(groupedLogs)
             .sort((a, b) => b[0].localeCompare(a[0])) // Sort by date descending
             .map(([dateKey, logs]) => {
-              const date = new Date(dateKey);
+              const [year, month, day] = dateKey.split('-').map(Number);
+              const date = new Date(year, month - 1, day);
               return (
                 <View key={dateKey} style={styles.dayGroup}>
                   <Text style={styles.dayHeader}>
@@ -963,6 +1039,11 @@ const styles = StyleSheet.create({
   controlsSection: {
     marginBottom: 20,
   },
+  controlsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   controlsRow: {
     flexDirection: 'row',
     gap: 10,
@@ -981,6 +1062,15 @@ const styles = StyleSheet.create({
   },
   addTimeButton: {
     backgroundColor: '#2196f3',
+  },
+  deleteEmployeeLink: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  deleteEmployeeLinkText: {
+    color: '#d32f2f',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   controlButtonText: {
     color: '#fff',

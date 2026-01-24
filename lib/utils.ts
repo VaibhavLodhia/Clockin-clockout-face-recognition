@@ -51,6 +51,52 @@ export async function logAuditEvent(
   });
 }
 
+// Delete employee user via edge function (admin only)
+export async function deleteEmployeeUser(
+  targetUserId: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!targetUserId) {
+    return { success: false, error: 'Missing target user ID' };
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return { success: false, error: 'No active session' };
+  }
+
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    return { success: false, error: 'Supabase URL not configured' };
+  }
+
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/delete-user`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+        },
+        body: JSON.stringify({ targetUserId }),
+      }
+    );
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: result?.error || `Delete failed (${response.status})`,
+      };
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message || 'Delete failed' };
+  }
+}
+
 // Generate admin code (tries edge function first, falls back to direct DB insert)
 export async function generateAdminCode(
   action: 'signup' | 'clock_in' | 'clock_out',

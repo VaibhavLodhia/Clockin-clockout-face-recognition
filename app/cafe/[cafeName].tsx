@@ -6,12 +6,16 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { getUserData } from '../../lib/utils';
 import { getCurrentWeek, getPreviousWeek, getNextWeek, formatWeekRange, getDayOfWeek } from '../../lib/weekUtils';
 import { formatTimeRange, calculateHours, formatHours, splitMultiDayTimeLog } from '../../lib/timeUtils';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as XLSX from 'xlsx';
 
 type CafeLocation = 'Hodge Hall' | 'Read Cafe';
 
@@ -241,6 +245,86 @@ export default function CafeSchedule() {
     return result;
   }
 
+  function formatTotalHoursForTable(hours: number): string {
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return '0 hours';
+    }
+
+    if (hours < 1) {
+      const minutes = Math.max(1, Math.round(hours * 60));
+      return `${hours.toFixed(2)} hours (${minutes} min)`;
+    }
+
+    return `${hours.toFixed(1)} hours`;
+  }
+
+  async function handleDownloadWeeklyHours() {
+    try {
+      const start = selectedWeek.start;
+      const end = selectedWeek.end;
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
+      const startLabel = start.toLocaleDateString('en-US');
+      const endLabel = end.toLocaleDateString('en-US');
+      const startFile = startIso.split('T')[0];
+      const endFile = endIso.split('T')[0];
+      const cafeLabel = selectedCafe ? selectedCafe.replace(/\s+/g, '-') : 'cafe';
+      const fileName = `weekly-hours_${cafeLabel}_${startFile}_to_${endFile}.xlsx`;
+
+      const rows: (string | number)[][] = [
+        ['Cafe', selectedCafe || 'Unknown'],
+        ['Week Start', startLabel],
+        ['Week End', endLabel],
+        [],
+        ['Employee', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Total'],
+      ];
+
+      const sortedRows = [...tableData].sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+      sortedRows.forEach((row) => {
+        const dayValues = dayKeys.map((dayKey) =>
+          row[dayKey].length > 0 ? row[dayKey].join('\n') : '-'
+        );
+        rows.push([
+          row.employeeName,
+          ...dayValues,
+          Number(row.totalHours.toFixed(2)),
+        ]);
+      });
+
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.aoa_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Weekly Hours');
+
+      if (Platform.OS === 'web') {
+        const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+        const blob = new Blob([wbout], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        Alert.alert('Success', 'Weekly hours downloaded');
+      } else {
+        const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+        const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+        await FileSystem.writeAsStringAsync(fileUri, wbout, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Weekly Hours Report',
+        });
+      }
+    } catch (error: any) {
+      Alert.alert('Error', `Failed to download report: ${error.message}`);
+    }
+  }
+
   if (!selectedCafe) {
     return null;
   }
@@ -277,6 +361,13 @@ export default function CafeSchedule() {
             <Text style={styles.weekNavText}>Next →</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          style={styles.downloadExcelButton}
+          onPress={handleDownloadWeeklyHours}
+        >
+          <Text style={styles.downloadExcelButtonText}>Download Weekly Excel</Text>
+        </TouchableOpacity>
 
         {/* Weekly Table */}
         <View style={styles.tableSection}>
@@ -324,7 +415,7 @@ export default function CafeSchedule() {
                   ))}
                   <View style={[styles.tableCell, styles.totalColumn]}>
                     <Text style={styles.totalHoursText}>
-                      {formatHours(row.totalHours)}
+                      {formatTotalHoursForTable(row.totalHours)}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -388,6 +479,18 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   weekText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  downloadExcelButton: {
+    backgroundColor: '#2e7d32',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  downloadExcelButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
   },
