@@ -16,6 +16,7 @@ import { getCurrentWorkCycle, isWorkCycleEnded, getPreviousWorkCycle } from '../
 
 export default function AdminDashboard() {
   const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [showGenerateCode, setShowGenerateCode] = useState(false);
   const [codeAction, setCodeAction] = useState<'clock_in' | 'clock_out'>('clock_in');
   const [generatedCode, setGeneratedCode] = useState<string>('');
@@ -34,14 +35,22 @@ export default function AdminDashboard() {
   }, []);
 
   async function loadUserData() {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (authUser) {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        router.replace('/login');
+        return;
+      }
+
       const userData = await getUserData(authUser.id);
       if (!userData || userData.role !== 'admin') {
         router.replace('/login');
         return;
       }
+
       setUser(userData);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -130,6 +139,14 @@ export default function AdminDashboard() {
     router.replace('/login');
   }
 
+
+  if (loading) {
+    return null;
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <ScrollView style={styles.container}>
