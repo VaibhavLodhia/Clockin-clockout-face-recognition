@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
-import { processImageForFaceRecognition, showFaceRecognitionConfig } from '../lib/faceRecognition';
+import { processImageForFaceRecognition } from '../lib/faceRecognition';
 
 interface FaceEnrollmentProps {
   onComplete: (embeddings: number[][]) => void; // Array of 4 embeddings
@@ -43,11 +43,6 @@ export default function FaceEnrollment({
       requestPermission();
     }
   }, [permission]);
-
-  // Show config on mount (for debugging - same in dev and production)
-  useEffect(() => {
-    showFaceRecognitionConfig();
-  }, []);
 
   async function captureFrame() {
     if (!cameraRef.current) {

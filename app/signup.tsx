@@ -342,6 +342,7 @@ export default function SignupScreen() {
         <TextInput
           style={styles.input}
           placeholder="Full Name"
+          placeholderTextColor="#999"
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
@@ -350,6 +351,7 @@ export default function SignupScreen() {
         <TextInput
           style={styles.input}
           placeholder="Email"
+          placeholderTextColor="#999"
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -360,6 +362,7 @@ export default function SignupScreen() {
         <TextInput
           style={styles.input}
           placeholder="Password"
+          placeholderTextColor="#999"
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -467,6 +470,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 15,
     backgroundColor: '#f9f9f9',
+    color: '#000',
   },
   button: {
     backgroundColor: '#000',
