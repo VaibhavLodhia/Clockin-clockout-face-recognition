@@ -51,6 +51,39 @@ export async function logAuditEvent(
   });
 }
 
+// Resolve employee login identifier (name or email) to email
+// Uses supabase client so built app gets same URL/key as rest of app (EAS extra)
+export async function resolveEmployeeLogin(
+  identifier: string
+): Promise<{ email?: string; error?: string }> {
+  const trimmed = (identifier || '').trim();
+  if (!trimmed) {
+    return { error: 'Please enter name or email' };
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('resolve-employee-login', {
+      body: { identifier: trimmed },
+    });
+
+    if (error) {
+      return { error: error.message || 'Unable to find employee' };
+    }
+
+    const result = data as { email?: string; error?: string } | null;
+    if (result?.error) {
+      return { error: result.error };
+    }
+    if (!result?.email) {
+      return { error: 'Employee not found' };
+    }
+
+    return { email: result.email };
+  } catch (err: any) {
+    return { error: err?.message || 'Lookup failed' };
+  }
+}
+
 // Delete employee user via edge function (admin only)
 export async function deleteEmployeeUser(
   targetUserId: string
@@ -94,6 +127,54 @@ export async function deleteEmployeeUser(
     return { success: true };
   } catch (error: any) {
     return { success: false, error: error.message || 'Delete failed' };
+  }
+}
+
+// Reset all employee passwords to default (admin only)
+export async function resetEmployeePasswords(): Promise<{
+  success: boolean;
+  updated?: number;
+  failed?: string[];
+  error?: string;
+}> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    return { success: false, error: 'No active session' };
+  }
+
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    return { success: false, error: 'Supabase URL not configured' };
+  }
+
+  try {
+    const response = await fetch(
+      `${supabaseUrl}/functions/v1/reset-employee-passwords`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
+        },
+      }
+    );
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result?.error || `Reset failed (${response.status})`,
+      };
+    }
+
+    return {
+      success: true,
+      updated: result?.updated,
+      failed: result?.failed || [],
+    };
+  } catch (error: any) {
+    return { success: false, error: error.message || 'Reset failed' };
   }
 }
 

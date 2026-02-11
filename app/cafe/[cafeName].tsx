@@ -218,11 +218,11 @@ export default function CafeSchedule() {
             const hours = calculateHours(splitLog.start, splitLog.end, now);
 
             if (employeeDataMap[log.user_id]) {
-              const dayKey = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayOfWeek] as keyof EmployeeTimeData;
-              (employeeDataMap[log.user_id][dayKey] as string[]).push(timeRange);
-              employeeDataMap[log.user_id].totalHours += hours;
-            }
-          });
+const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][dayOfWeek] as keyof EmployeeTimeData;
+            (employeeDataMap[log.user_id][dayKey] as string[]).push(timeRange);
+            employeeDataMap[log.user_id].totalHours += hours;
+          }
+        });
         } else {
           // Single day log
           const dayOfWeek = getDayOfWeek(clockIn);
@@ -230,7 +230,7 @@ export default function CafeSchedule() {
           const hours = calculateHours(clockIn, clockOut, now);
 
           if (employeeDataMap[log.user_id]) {
-            const dayKey = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayOfWeek] as keyof EmployeeTimeData;
+            const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][dayOfWeek] as keyof EmployeeTimeData;
             (employeeDataMap[log.user_id][dayKey] as string[]).push(timeRange);
             employeeDataMap[log.user_id].totalHours += hours;
           }
@@ -330,8 +330,8 @@ export default function CafeSchedule() {
   }
 
   const tableData = processTimeLogsForTable();
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const;
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
   return (
     <ScrollView style={styles.container}>

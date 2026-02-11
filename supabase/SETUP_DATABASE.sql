@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS public.time_logs (
   clock_in TIMESTAMP WITH TIME ZONE NOT NULL,
   clock_out TIMESTAMP WITH TIME ZONE,
   work_cycle TEXT NOT NULL,
-  verified_by TEXT NOT NULL CHECK (verified_by IN ('face', 'admin_code', 'admin_manual')),
+  verified_by TEXT NOT NULL CHECK (verified_by IN ('face', 'admin_code', 'admin_manual', 'auto')),
   flagged BOOLEAN DEFAULT FALSE,
   flag_reason TEXT,
   matched_employee_id UUID REFERENCES public.users(id),

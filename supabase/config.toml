@@ -1,0 +1,4 @@
+# Per-function config (used when deploying with Supabase CLI)
+# resolve-employee-login is called before login - must not require JWT
+[functions.resolve-employee-login]
+verify_jwt = false

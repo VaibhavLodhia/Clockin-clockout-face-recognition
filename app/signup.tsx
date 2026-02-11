@@ -25,9 +25,12 @@ export default function SignupScreen() {
   const [showFaceEnrollment, setShowFaceEnrollment] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const isWeb = Platform.OS === 'web';
+
+  const EMPLOYEE_DEFAULT_PASSWORD = 'Employee@123';
 
   async function handleSignup() {
-    if (!name || !email || !password || !cafeLocation) {
+    if (!name || !email || !cafeLocation) {
       Alert.alert('Error', 'Please fill all fields including cafe location');
       return;
     }
@@ -39,9 +42,15 @@ export default function SignupScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
-      return;
+    if (isWeb) {
+      if (!password) {
+        Alert.alert('Error', 'Please enter a password');
+        return;
+      }
+      if (password.length < 6) {
+        Alert.alert('Error', 'Password must be at least 6 characters');
+        return;
+      }
     }
 
     // On web, face enrollment is not available
@@ -82,9 +91,11 @@ export default function SignupScreen() {
       console.log('🔧 Supabase URL configured:', !!supabase);
       
       // Create auth user with metadata
+      const passwordToUse = isWeb ? password : EMPLOYEE_DEFAULT_PASSWORD;
+
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: trimmedEmail,
-        password,
+        password: passwordToUse,
         options: {
           emailRedirectTo: undefined, // Disable email confirmation for now
           data: {
@@ -359,15 +370,17 @@ export default function SignupScreen() {
           autoComplete="email"
         />
 
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#999"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-        />
+        {isWeb && (
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor="#999"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+        )}
 
         {/* Cafe Location Picker */}
         <TouchableOpacity

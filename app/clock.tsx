@@ -541,7 +541,7 @@ export default function ClockScreen() {
 
   function processTimeLogsForTable(): DayTimeData[] {
     const dayDataMap: { [key: string]: DayTimeData } = {};
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     
     // Initialize all days
     days.forEach(day => {

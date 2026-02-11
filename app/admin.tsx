@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
@@ -97,7 +98,6 @@ export default function AdminDashboard() {
     // Export logic would go here
     Alert.alert('Success', 'Data exported (CSV export to be implemented)');
   }
-
 
   async function handleDeleteCycle() {
     if (!user) return;
