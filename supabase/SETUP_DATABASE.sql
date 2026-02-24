@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS public.time_logs (
   clock_in TIMESTAMP WITH TIME ZONE NOT NULL,
   clock_out TIMESTAMP WITH TIME ZONE,
   work_cycle TEXT NOT NULL,
+  work_location TEXT CHECK (work_location IN ('Hodge Hall', 'Read Cafe')),
   verified_by TEXT NOT NULL CHECK (verified_by IN ('face', 'admin_code', 'admin_manual', 'auto')),
   flagged BOOLEAN DEFAULT FALSE,
   flag_reason TEXT,
@@ -88,6 +89,7 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 CREATE INDEX IF NOT EXISTS idx_time_logs_user_id ON public.time_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_time_logs_work_cycle ON public.time_logs(work_cycle);
 CREATE INDEX IF NOT EXISTS idx_time_logs_clock_in ON public.time_logs(clock_in);
+CREATE INDEX IF NOT EXISTS idx_time_logs_work_location ON public.time_logs(work_location);
 CREATE INDEX IF NOT EXISTS idx_admin_codes_code_hash ON public.admin_codes(code_hash);
 CREATE INDEX IF NOT EXISTS idx_admin_codes_expires_at ON public.admin_codes(expires_at);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_performed_by ON public.audit_logs(performed_by);

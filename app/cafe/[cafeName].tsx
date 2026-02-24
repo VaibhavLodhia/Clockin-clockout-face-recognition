@@ -15,6 +15,7 @@ import { getCurrentWeek, getPreviousWeek, getNextWeek, formatWeekRange, getDayOf
 import { formatTimeRange, calculateHours, formatHours, splitMultiDayTimeLog } from '../../lib/timeUtils';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 import * as XLSX from 'xlsx';
 
 type CafeLocation = 'Hodge Hall' | 'Read Cafe';
@@ -325,11 +326,85 @@ const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturda
     }
   }
 
+  async function handleDownloadPDF() {
+    try {
+      const data = processTimeLogsForTable();
+      const totalAll = data.reduce((sum, row) => sum + row.totalHours, 0);
+      const dayKeysList = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+      const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const start = selectedWeek.start;
+      const end = selectedWeek.end;
+      const weekRange = `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+
+      const escape = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const headerCells = ['Employee', ...dayLabels, 'Total'].map((h) => `<th>${escape(h)}</th>`).join('');
+      const bodyRows = data
+        .sort((a, b) => a.employeeName.localeCompare(b.employeeName))
+        .map((row) => {
+          const dayCells = dayKeysList.map((dk) => {
+            const val = row[dk].length > 0 ? row[dk].join(', ') : '-';
+            return `<td>${escape(val)}</td>`;
+          }).join('');
+          return `<tr><td>${escape(row.employeeName)}</td>${dayCells}<td>${escape(formatTotalHoursForTable(row.totalHours))}</td></tr>`;
+        })
+        .join('');
+      const totalRow = data.length > 0
+        ? `<tr class="total-row"><td>Total (all employees)</td>${dayLabels.map(() => '<td>-</td>').join('')}<td>${escape(formatTotalHoursForTable(totalAll))}</td></tr>`
+        : '';
+
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        @page { size: A4 landscape; margin: 6mm; }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; font-size: 8px; margin: 0; padding: 6px; }
+        h1 { margin: 0 0 2px 0; font-size: 12px; }
+        .meta { margin-bottom: 4px; color: #555; font-size: 9px; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { border: 1px solid #333; padding: 2px 3px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
+        th { background: #333; color: #fff; font-weight: bold; text-align: center; }
+        td:nth-child(1) { width: 14%; font-weight: bold; }
+        td:nth-child(n+2):nth-child(-n+8) { width: 9%; }
+        td:last-child { width: 12%; text-align: center; font-weight: bold; }
+        tr.total-row { background: #e8e8e8; font-weight: bold; border-top: 2px solid #333; }
+      </style></head><body>
+        <h1>${escape(selectedCafe || '')} – Weekly Schedule</h1>
+        <div class="meta">${escape(weekRange)}</div>
+        <table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}${totalRow}</tbody></table>
+      </body></html>`;
+
+      if (Platform.OS === 'web') {
+        const win = window.open('', '_blank');
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+          setTimeout(() => {
+            win.print();
+            win.onafterprint = () => win.close();
+          }, 250);
+        }
+        Alert.alert('Success', 'Use the print dialog and choose "Save as PDF" or "Microsoft Print to PDF" to save as one page.');
+      } else {
+        const { uri } = await Print.printToFileAsync({
+          html,
+          width: 842,
+          height: 595,
+        });
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Weekly Hours PDF',
+        });
+      }
+    } catch (error: any) {
+      Alert.alert('Error', `Failed to create PDF: ${error.message}`);
+    }
+  }
+
   if (!selectedCafe) {
     return null;
   }
 
   const tableData = processTimeLogsForTable();
+  const totalAllEmployees = tableData.reduce((sum, row) => sum + row.totalHours, 0);
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
@@ -362,12 +437,20 @@ const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturda
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.downloadExcelButton}
-          onPress={handleDownloadWeeklyHours}
-        >
-          <Text style={styles.downloadExcelButtonText}>Download Weekly Excel</Text>
-        </TouchableOpacity>
+        <View style={styles.downloadButtonsRow}>
+          <TouchableOpacity
+            style={styles.downloadExcelButton}
+            onPress={handleDownloadWeeklyHours}
+          >
+            <Text style={styles.downloadExcelButtonText}>Download Excel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.downloadPdfButton}
+            onPress={handleDownloadPDF}
+          >
+            <Text style={styles.downloadPdfButtonText}>Download PDF (1 page)</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Weekly Table */}
         <View style={styles.tableSection}>
@@ -420,6 +503,25 @@ const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturda
                   </View>
                 </TouchableOpacity>
               ))}
+
+              {/* Total of all employees */}
+              {tableData.length > 0 && (
+                <View style={[styles.tableRow, styles.totalAllRow]}>
+                  <View style={[styles.tableCell, styles.employeeNameColumn]}>
+                    <Text style={styles.totalAllLabel}>Total (all employees)</Text>
+                  </View>
+                  {dayKeys.map((dayKey) => (
+                    <View key={dayKey} style={[styles.tableCell, styles.dayColumn]}>
+                      <Text style={styles.emptyCellText}>-</Text>
+                    </View>
+                  ))}
+                  <View style={[styles.tableCell, styles.totalColumn]}>
+                    <Text style={styles.totalAllHoursText}>
+                      {formatTotalHoursForTable(totalAllEmployees)}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {tableData.length === 0 && (
                 <View style={styles.emptyTableRow}>
@@ -482,14 +584,31 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
+  downloadButtonsRow: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
   downloadExcelButton: {
     backgroundColor: '#2e7d32',
     padding: 14,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 20,
+    flex: 1,
+    marginRight: 8,
   },
   downloadExcelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  downloadPdfButton: {
+    backgroundColor: '#1565c0',
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    flex: 1,
+  },
+  downloadPdfButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
@@ -564,6 +683,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     textAlign: 'center',
+  },
+  totalAllRow: {
+    backgroundColor: '#f0f0f0',
+    borderTopWidth: 2,
+    borderTopColor: '#333',
+  },
+  totalAllLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#000',
+  },
+  totalAllHoursText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    color: '#000',
   },
   emptyTableRow: {
     padding: 20,

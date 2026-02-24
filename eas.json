@@ -23,10 +23,30 @@
       "env": {
         "EXPO_PUBLIC_FACE_RECOGNITION_URL": "https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition"
       }
+    },
+    "hodge-hall": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FACE_RECOGNITION_URL": "https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition",
+        "EXPO_PUBLIC_CAFE_LOCATION": "Hodge Hall"
+      }
+    },
+    "read-cafe": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FACE_RECOGNITION_URL": "https://vaibhavlodhiya-face-recognition-api.hf.space/api/face-recognition",
+        "EXPO_PUBLIC_CAFE_LOCATION": "Read Cafe"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "hodge-hall": {},
+    "read-cafe": {}
   }
 }
 

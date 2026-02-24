@@ -1,6 +1,24 @@
+// Get cafe location from environment variable (set in EAS build profiles)
+const cafeLocation = process.env.EXPO_PUBLIC_CAFE_LOCATION || null;
+const isHodgeHall = cafeLocation === 'Hodge Hall';
+const isReadCafe = cafeLocation === 'Read Cafe';
+
+// App name and bundle ID based on cafe location
+const appName = isHodgeHall 
+  ? "Hodge Hall Clock" 
+  : isReadCafe 
+  ? "Read Cafe Clock" 
+  : "Employee Clock App";
+
+const bundleId = isHodgeHall
+  ? "com.employeeclock.hodgehall"
+  : isReadCafe
+  ? "com.employeeclock.readcafe"
+  : "com.employeeclock.app";
+
 export default {
   expo: {
-    name: "Employee Clock App",
+    name: appName,
     slug: "employee-clock-app",
     version: "1.0.0",
     orientation: "portrait",
@@ -13,13 +31,13 @@ export default {
     ],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.employeeclock.app"
+      bundleIdentifier: bundleId
     },
     android: {
       adaptiveIcon: {
         backgroundColor: "#ffffff"
       },
-      package: "com.employeeclock.app",
+      package: bundleId,
       permissions: [
         "CAMERA"
       ]
@@ -56,6 +74,7 @@ export default {
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://mygapgtftnfvtspvbpxi.supabase.co',
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im15Z2FwZ3RmdG5mdnRzcHZicHhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3NDI4NDksImV4cCI6MjA4MTMxODg0OX0.qNQv7GwfPb6RjX-s4TzFOARvoHD8_Fd7shc0hzvER7I',
       faceRecognitionUrl: process.env.EXPO_PUBLIC_FACE_RECOGNITION_URL,
+      cafeLocation: cafeLocation, // 'Hodge Hall' or 'Read Cafe' or null
     }
   }
 };

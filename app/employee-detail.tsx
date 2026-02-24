@@ -137,6 +137,9 @@ export default function EmployeeDetailScreen() {
         work_cycle: workCycle
       });
 
+      // Use employee's default cafe_location for admin manual clock-in
+      const workLocation = employee?.cafe_location || null;
+
       const { data, error } = await supabase
         .from('time_logs')
         .insert({
@@ -144,6 +147,7 @@ export default function EmployeeDetailScreen() {
           clock_in: now.toISOString(),
           clock_out: null,
           work_cycle: workCycle,
+          work_location: workLocation,
           verified_by: 'admin_manual',
         })
         .select();

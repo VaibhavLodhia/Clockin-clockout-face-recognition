@@ -98,6 +98,7 @@ export interface TimeLog {
   clock_in: string;
   clock_out: string | null;
   work_cycle: string;
+  work_location: 'Hodge Hall' | 'Read Cafe' | null;
   verified_by: 'face' | 'admin_code' | 'admin_manual';
   flagged: boolean;
   flag_reason: string | null;

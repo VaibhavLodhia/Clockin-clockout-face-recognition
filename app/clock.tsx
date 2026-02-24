@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
 import { getUserData, validateAdminCode } from '../lib/utils';
 import { getCurrentWorkCycle } from '../lib/workCycle';
@@ -398,10 +399,16 @@ export default function ClockScreen() {
       const now = new Date().toISOString();
 
       if (action === 'clock_in') {
+        // Get cafe location from app config (set via EAS build profile)
+        const cafeLocation = Constants.expoConfig?.extra?.cafeLocation || 
+                            process.env.EXPO_PUBLIC_CAFE_LOCATION || 
+                            null;
+        
         const { error } = await supabase.from('time_logs').insert({
           user_id: user.id,
           clock_in: now,
           work_cycle: workCycle,
+          work_location: cafeLocation as 'Hodge Hall' | 'Read Cafe' | null,
           verified_by: verifiedBy,
           flagged: matchedEmployeeId !== null && matchedEmployeeId !== user.id,
           flag_reason: matchedEmployeeId && matchedEmployeeId !== user.id

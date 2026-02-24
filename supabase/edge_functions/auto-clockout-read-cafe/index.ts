@@ -32,7 +32,7 @@ function getLocalTimeParts(timeZone: string) {
   };
 }
 
-serve(async (_req) => {
+serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -42,11 +42,15 @@ serve(async (_req) => {
       return new Response("Missing configuration", { status: 500 });
     }
 
+    const url = new URL(req.url);
+    const forceRun = url.searchParams.get("force_run") === "1";
+
     const { hour, minute } = getLocalTimeParts(timeZone);
     const time = `${hour}:${minute}`;
 
     // Read Cafe: 8:30 PM every day (Sun–Sat)
-    const shouldRun = time === "20:30";
+    let shouldRun = time === "20:30";
+    if (forceRun) shouldRun = true;
 
     if (!shouldRun) {
       return new Response("No action needed", { status: 200 });
@@ -56,19 +60,45 @@ serve(async (_req) => {
       auth: { persistSession: false },
     });
 
-    const { data: employees, error: employeeError } = await serviceClient
-      .from("users")
-      .select("id")
-      .eq("role", "employee")
-      .eq("cafe_location", "Read Cafe");
+    // 1) Get all open time logs (no join)
+    const { data: openLogs, error: logsErr } = await serviceClient
+      .from("time_logs")
+      .select("id, user_id, work_location")
+      .is("clock_out", null);
 
-    if (employeeError) {
-      return new Response("Failed to load employees", { status: 500 });
+    if (logsErr || !openLogs || openLogs.length === 0) {
+      return new Response(openLogs?.length === 0 ? "No open time logs" : "Failed to load time logs", { status: 200 });
     }
 
-    const employeeIds = (employees || []).map((emp) => emp.id);
-    if (employeeIds.length === 0) {
-      return new Response("No employees found", { status: 200 });
+    const userIds = [...new Set(openLogs.map((r: { user_id: string }) => r.user_id))];
+
+    // 2) Get cafe_location for those users (separate query)
+    const { data: users, error: usersErr } = await serviceClient
+      .from("users")
+      .select("id, cafe_location")
+      .in("id", userIds);
+
+    if (usersErr || !users) {
+      return new Response("Failed to load users", { status: 500 });
+    }
+
+    const cafeByUserId: Record<string, string | null> = {};
+    users.forEach((u: { id: string; cafe_location: string | null }) => {
+      cafeByUserId[u.id] = u.cafe_location || null;
+    });
+
+    // 3) Read Cafe: clock out if work_location = 'Read Cafe' OR (work_location null and user cafe = 'Read Cafe')
+    const readLogIds: string[] = [];
+    openLogs.forEach((log: { id: string; user_id: string; work_location: string | null }) => {
+      const wrk = log.work_location;
+      const cafe = cafeByUserId[log.user_id];
+      if (wrk === "Read Cafe" || (wrk === null && cafe === "Read Cafe")) {
+        readLogIds.push(log.id);
+      }
+    });
+
+    if (readLogIds.length === 0) {
+      return new Response("No Read Cafe time logs to clock out", { status: 200 });
     }
 
     const { error: updateError, data: updatedLogs } = await serviceClient
@@ -77,9 +107,10 @@ serve(async (_req) => {
         clock_out: new Date().toISOString(),
         verified_by: "auto",
       })
-      .in("user_id", employeeIds)
-      .is("clock_out", null)
+      .in("id", readLogIds)
       .select("id");
+
+    const employeeIds = [...new Set(openLogs.filter((l: { id: string }) => readLogIds.includes(l.id)).map((l: { user_id: string }) => l.user_id))];
 
     if (updateError) {
       return new Response("Failed to update time logs", { status: 500 });
@@ -97,10 +128,8 @@ serve(async (_req) => {
       },
     });
 
-    return new Response(
-      `Auto clock-out complete: ${updatedLogs?.length || 0}`,
-      { status: 200 }
-    );
+    const msg = `Auto clock-out complete: ${updatedLogs?.length || 0}${forceRun ? " (force_run test)" : ""}`;
+    return new Response(msg, { status: 200 });
   } catch (_error) {
     return new Response("Unhandled error", { status: 500 });
   }
