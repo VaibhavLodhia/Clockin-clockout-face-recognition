@@ -353,26 +353,29 @@ const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturda
         : '';
 
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        @page { size: A4 landscape; margin: 6mm; }
-        * { box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; font-size: 8px; margin: 0; padding: 6px; }
-        h1 { margin: 0 0 2px 0; font-size: 12px; }
-        .meta { margin-bottom: 4px; color: #555; font-size: 9px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th, td { border: 1px solid #333; padding: 2px 3px; text-align: left; overflow: hidden; text-overflow: ellipsis; }
-        th { background: #333; color: #fff; font-weight: bold; text-align: center; }
-        td:nth-child(1) { width: 14%; font-weight: bold; }
-        td:nth-child(n+2):nth-child(-n+8) { width: 9%; }
-        td:last-child { width: 12%; text-align: center; font-weight: bold; }
-        tr.total-row { background: #e8e8e8; font-weight: bold; border-top: 2px solid #333; }
-      </style></head><body>
+        @page { size: A4 landscape; margin: 5mm; }
+        * { box-sizing: border-box; color: #000; font-weight: bold; }
+        body { font-family: Arial, sans-serif; font-size: 20px; font-weight: bold; margin: 0; padding: 4px; line-height: 1.00; color: #000; }
+        h1 { margin: 0 0 2px 0; font-size: 20px; font-weight: bold; color: #000; }
+        .meta { margin-bottom: 3px; font-size: 20px; font-weight: bold; color: #000; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; font-weight: bold; font-size: 20px; color: #000; }
+        th, td { border: 1px solid #000; padding: 2px 4px; text-align: left; overflow: hidden; text-overflow: ellipsis; font-weight: bold; line-height: 1.00; color: #000; }
+        th { background: #fff; color: #000; font-weight: bold; text-align: center; font-size: 20px; padding: 3px 4px; }
+        th:nth-child(1) { width: 11%; }
+        th:nth-child(n+2):nth-child(-n+8) { width: 11%; }
+        th:last-child { width: 10%; }
+        td:nth-child(1) { width: 11%; min-width: 0; }
+        td:nth-child(2), td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7), td:nth-child(8) { width: 11%; min-width: 0; font-size: 13px; }
+        td:last-child { width: 10%; text-align: center; }
+        tr.total-row { background: #fff; font-weight: bold; border-top: 2px solid #000; color: #000; }
+      </style></head><body style="color:#000;">
         <h1>${escape(selectedCafe || '')} – Weekly Schedule</h1>
         <div class="meta">${escape(weekRange)}</div>
         <table><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}${totalRow}</tbody></table>
       </body></html>`;
 
       if (Platform.OS === 'web') {
-        const win = window.open('', '_blank');
+        const win = window.open('', '_blank', 'width=1200,height=700');
         if (win) {
           win.document.write(html);
           win.document.close();
@@ -382,7 +385,7 @@ const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturda
             win.onafterprint = () => win.close();
           }, 250);
         }
-        Alert.alert('Success', 'Use the print dialog and choose "Save as PDF" or "Microsoft Print to PDF" to save as one page.');
+        Alert.alert('Success', 'In the print dialog set orientation to Landscape, then choose "Save as PDF" or "Print to PDF".');
       } else {
         const { uri } = await Print.printToFileAsync({
           html,
@@ -448,7 +451,7 @@ const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturda
             style={styles.downloadPdfButton}
             onPress={handleDownloadPDF}
           >
-            <Text style={styles.downloadPdfButtonText}>Download PDF (1 page)</Text>
+            <Text style={styles.downloadPdfButtonText}>Download PDF</Text>
           </TouchableOpacity>
         </View>
 
