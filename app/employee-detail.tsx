@@ -14,7 +14,7 @@ import { supabase } from '../lib/supabase';
 import { getUserData, logAuditEvent, deleteEmployeeUser } from '../lib/utils';
 import { getWeekForDate, getPreviousWeek, getNextWeek, formatWeekRange } from '../lib/weekUtils';
 import { formatTime, formatTimeRange, calculateHours, formatHours, generateTimeOptions, timeStringToDate, timeRangesOverlap } from '../lib/timeUtils';
-import { getCurrentWorkCycle } from '../lib/workCycle';
+import { getCurrentWorkCycle, getWorkCycleForDate } from '../lib/workCycle';
 
 export default function EmployeeDetailScreen() {
   const router = useRouter();
@@ -34,6 +34,7 @@ export default function EmployeeDetailScreen() {
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const timeOptions = generateTimeOptions();
 
@@ -82,15 +83,16 @@ export default function EmployeeDetailScreen() {
     setEmployee(data);
   }
 
-  async function loadTimeLogs() {
+  async function loadTimeLogs(weekOverride?: { start: Date; end: Date }) {
     if (!employeeId) {
       console.warn('⚠️ No employeeId, skipping loadTimeLogs');
       return;
     }
 
+    const week = weekOverride ?? selectedWeek;
     try {
-      const weekStart = selectedWeek.start.toISOString();
-      const weekEnd = selectedWeek.end.toISOString();
+      const weekStart = week.start.toISOString();
+      const weekEnd = week.end.toISOString();
 
       console.log('📥 Loading time logs:', {
         employeeId,
@@ -239,8 +241,10 @@ export default function EmployeeDetailScreen() {
   }
 
   async function handleSaveManualEntry() {
+    setSaveError(null);
+    console.log('💾 Save manual entry clicked', { hasUser: !!user, hasEmployee: !!employee });
     if (!user || !employee) {
-      Alert.alert('Error', 'User or employee data not loaded');
+      setSaveError('User or employee data not loaded');
       return;
     }
 
@@ -258,42 +262,61 @@ export default function EmployeeDetailScreen() {
       });
 
       if (endDateTime <= startDateTime) {
-        Alert.alert('Error', 'End time must be after start time');
+        setSaveError('End time must be after start time');
         return;
       }
 
-      // Check for overlaps with existing entries
-      const dayStart = new Date(selectedDate);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(selectedDate);
-      dayEnd.setHours(23, 59, 59, 999);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selectedDay = new Date(selectedDate);
+      selectedDay.setHours(0, 0, 0, 0);
+      const isPastDate = selectedDay.getTime() < today.getTime();
 
-      const { data: existingLogs, error: existingError } = await supabase
-        .from('time_logs')
-        .select('*')
-        .eq('user_id', employeeId)
-        .gte('clock_in', dayStart.toISOString())
-        .lte('clock_in', dayEnd.toISOString());
+      // Only check overlaps when editing or when the date is today (skip for new past-date entries to avoid hang/slow select)
+      if (editingLogId || !isPastDate) {
+        console.log('💾 Save: checking overlaps...');
+        const dayStart = new Date(selectedDate);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(selectedDate);
+        dayEnd.setHours(23, 59, 59, 999);
 
-      if (existingError) {
-        console.warn('⚠️ Error checking overlaps:', existingError);
-      }
+        const { data: existingLogs, error: existingError } = await supabase
+          .from('time_logs')
+          .select('id, clock_in, clock_out')
+          .eq('user_id', employeeId)
+          .gte('clock_in', dayStart.toISOString())
+          .lte('clock_in', dayEnd.toISOString());
 
-      if (existingLogs) {
-        for (const log of existingLogs) {
-          if (log.id === editingLogId) continue; // Skip the one we're editing
+        console.log('💾 Save: overlap query done', { count: existingLogs?.length ?? 0, err: existingError?.message });
 
-          const logStart = new Date(log.clock_in);
-          const logEnd = log.clock_out ? new Date(log.clock_out) : new Date();
+        if (existingError) {
+          console.warn('⚠️ Error checking overlaps:', existingError);
+        }
 
-          if (timeRangesOverlap(startDateTime, endDateTime, logStart, logEnd)) {
-            Alert.alert('Error', 'Time entry overlaps with existing entry');
-            return;
+        if (existingLogs) {
+          for (const log of existingLogs) {
+            if (log.id === editingLogId) continue;
+
+            const logDay = new Date(log.clock_in);
+            logDay.setHours(0, 0, 0, 0);
+            if (!log.clock_out && logDay.getTime() < today.getTime()) continue;
+
+            const logStart = new Date(log.clock_in);
+            const logEnd = log.clock_out ? new Date(log.clock_out) : new Date();
+
+            if (timeRangesOverlap(startDateTime, endDateTime, logStart, logEnd)) {
+              setSaveError('Time entry overlaps with existing entry');
+              return;
+            }
           }
         }
+      } else {
+        console.log('💾 Save: skipping overlap check (past date, new entry)');
       }
 
-      const workCycle = getCurrentWorkCycle();
+      // Use work cycle for the selected date so past-date entries get the correct cycle
+      const workCycle = getWorkCycleForDate(selectedDate);
+      console.log('💾 Save: inserting/updating...');
 
       if (editingLogId) {
         // Update existing entry
@@ -310,7 +333,12 @@ export default function EmployeeDetailScreen() {
 
         if (error) {
           console.error('❌ Update Error:', error);
-          Alert.alert('Error', `Failed to update: ${error.message}`);
+          if (error.message?.includes('token') || error.message?.includes('session') || error.message?.includes('auth') || (error as any).status === 401) {
+            setSaveError('Session expired. Please log in again.');
+            supabase.auth.signOut().then(() => router.replace('/login'));
+            return;
+          }
+          setSaveError(`Failed to update: ${error.message}`);
           return;
         }
 
@@ -338,7 +366,12 @@ export default function EmployeeDetailScreen() {
 
         if (error) {
           console.error('❌ Insert Error:', error);
-          Alert.alert('Error', `Failed to create: ${error.message}`);
+          if (error.message?.includes('token') || error.message?.includes('session') || error.message?.includes('auth') || (error as any).status === 401) {
+            setSaveError('Session expired. Please log in again.');
+            supabase.auth.signOut().then(() => router.replace('/login'));
+            return;
+          }
+          setSaveError(`Failed to create: ${error.message}`);
           return;
         }
 
@@ -352,12 +385,16 @@ export default function EmployeeDetailScreen() {
         Alert.alert('Success', 'Time entry created successfully');
       }
 
+      setSaveError(null);
       setShowManualEntry(false);
       setEditingLogId(null);
-      await loadTimeLogs();
+      // Switch to the week containing the saved date so the new/updated entry is visible
+      const weekForSavedDate = getWeekForDate(selectedDate);
+      setSelectedWeek(weekForSavedDate);
+      await loadTimeLogs(weekForSavedDate);
     } catch (err: any) {
       console.error('❌ Save Manual Entry Exception:', err);
-      Alert.alert('Error', `Unexpected error: ${err.message}`);
+      setSaveError(err?.message ?? 'Unexpected error');
     }
   }
 
@@ -525,6 +562,7 @@ export default function EmployeeDetailScreen() {
     setStartTime(formatTime(clockIn));
     setEndTime(clockOut ? formatTime(clockOut) : '5:00 PM');
     setEditingLogId(log.id);
+    setSaveError(null);
     setShowManualEntry(true);
   }
 
@@ -668,6 +706,7 @@ export default function EmployeeDetailScreen() {
                 setCalendarMonth(new Date());
                 setStartTime('9:00 AM');
                 setEndTime('5:00 PM');
+                setSaveError(null);
                 setShowManualEntry(true);
               }}
             >
@@ -769,22 +808,54 @@ export default function EmployeeDetailScreen() {
               <Text style={styles.timePickerText}>{endTime}</Text>
             </TouchableOpacity>
 
+            {saveError ? (
+              <View style={{ marginTop: 12, padding: 10, backgroundColor: '#fee', borderRadius: 8 }}>
+                <Text style={{ color: '#c00', fontSize: 14 }}>{saveError}</Text>
+              </View>
+            ) : null}
+
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => {
                   setShowManualEntry(false);
                   setEditingLogId(null);
+                  setSaveError(null);
                 }}
               >
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.saveButton]}
-                onPress={handleSaveManualEntry}
-              >
-                <Text style={styles.modalButtonText}>Save</Text>
-              </TouchableOpacity>
+              {Platform.OS === 'web' ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleSaveManualEntry();
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: 15,
+                    borderRadius: 8,
+                    marginLeft: 5,
+                    marginRight: 5,
+                    backgroundColor: '#000',
+                    color: '#fff',
+                    fontSize: 16,
+                    fontWeight: 'bold',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Save
+                </button>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.saveButton]}
+                  onPress={handleSaveManualEntry}
+                >
+                  <Text style={styles.modalButtonText}>Save</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>

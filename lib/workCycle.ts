@@ -21,6 +21,25 @@ export function getCurrentWorkCycle(): string {
   return `${startYear}-${endYear}`;
 }
 
+/** Work cycle for a given date (Aug 1 – May 30). Use for manual entries on past dates. */
+export function getWorkCycleForDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1; // 1-12
+
+  let startYear: number;
+  let endYear: number;
+
+  if (month >= 8) {
+    startYear = year;
+    endYear = year + 1;
+  } else {
+    startYear = year - 1;
+    endYear = year;
+  }
+
+  return `${startYear}-${endYear}`;
+}
+
 export function isWorkCycleEnded(): boolean {
   const now = new Date();
   const currentMonth = now.getMonth() + 1; // 1-12

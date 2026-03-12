@@ -124,9 +124,9 @@ waitForService().then(() => {
   console.log('📱 Starting Expo...');
   console.log('');
   
-  // Start Expo with tunnel mode for better connectivity
-  // Tunnel mode works better across networks and firewalls
-  const expoProcess = spawn('npx', ['expo', 'start', '--clear', '--tunnel'], {
+  // Start Expo in LAN mode (no ngrok). Use --tunnel manually if you need it:
+  // npx expo start --tunnel
+  const expoProcess = spawn('npx', ['expo', 'start', '--clear'], {
     cwd: PROJECT_ROOT,
     stdio: 'inherit',
     shell: true,
