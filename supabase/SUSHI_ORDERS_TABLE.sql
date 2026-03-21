@@ -16,9 +16,9 @@ CREATE TABLE IF NOT EXISTS public.sushi_orders (
 
 ALTER TABLE public.sushi_orders ENABLE ROW LEVEL SECURITY;
 
--- Allow anyone to insert (Sushi King website uses anon key to submit orders)
-CREATE POLICY "Allow public insert sushi_orders"
-  ON public.sushi_orders FOR INSERT WITH CHECK (true);
+-- Sushi King API uses the anon key — policy must target role `anon`
+CREATE POLICY "Allow anon insert sushi_orders"
+  ON public.sushi_orders FOR INSERT TO anon WITH CHECK (true);
 
 -- Allow authenticated users to read (admin dashboard)
 CREATE POLICY "Allow authenticated read sushi_orders"
