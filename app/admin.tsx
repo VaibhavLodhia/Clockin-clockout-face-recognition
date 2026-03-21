@@ -267,6 +267,12 @@ export default function AdminDashboard() {
           >
             <Text style={styles.cafeButtonText}>Read Cafe</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.cafeButton}
+            onPress={() => router.push('/sushi-orders')}
+          >
+            <Text style={styles.cafeButtonText}>Sushi Orders</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Bypass Code Button */}

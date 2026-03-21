@@ -52,6 +52,7 @@ export default function RootLayout() {
       <Stack.Screen name="signup" />
       <Stack.Screen name="clock" />
       <Stack.Screen name="admin" />
+      <Stack.Screen name="sushi-orders" />
     </Stack>
   );
 }
