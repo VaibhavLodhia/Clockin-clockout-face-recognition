@@ -12,7 +12,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { getUserData } from '../../lib/utils';
 import { getCurrentWeek, getPreviousWeek, getNextWeek, formatWeekRange, getDayOfWeek } from '../../lib/weekUtils';
-import { formatTimeRange, calculateHours, formatHours, splitMultiDayTimeLog } from '../../lib/timeUtils';
+import { formatTimeRange, calculateHours, formatHours } from '../../lib/timeUtils';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
@@ -169,6 +169,39 @@ export default function CafeSchedule() {
     setTimeLogs(data || []);
   }
 
+  function getAutoClockOutCutoff(clockIn: Date): Date | null {
+    if (!selectedCafe) return null;
+    const day = clockIn.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+    const cutoff = new Date(clockIn);
+    cutoff.setSeconds(0, 0);
+
+    if (selectedCafe === 'Hodge Hall') {
+      if (day >= 1 && day <= 4) {
+        cutoff.setHours(19, 30, 0, 0); // Mon-Thu 7:30 PM
+        return cutoff;
+      }
+      if (day === 5) {
+        cutoff.setHours(15, 30, 0, 0); // Fri 3:30 PM
+        return cutoff;
+      }
+      return null;
+    }
+
+    if (selectedCafe === 'Read Cafe') {
+      cutoff.setHours(20, 30, 0, 0); // Sun-Sat 8:30 PM
+      return cutoff;
+    }
+
+    return null;
+  }
+
+  function getEffectiveClockOut(clockIn: Date, clockOut: Date | null, now: Date): Date {
+    const fallbackEnd = clockOut || now;
+    const cutoff = getAutoClockOutCutoff(clockIn);
+    if (!cutoff) return fallbackEnd;
+    return fallbackEnd > cutoff ? cutoff : fallbackEnd;
+  }
+
   function processTimeLogsForTable(): EmployeeTimeData[] {
     const employeeDataMap: { [key: string]: EmployeeTimeData } = {};
 
@@ -191,7 +224,8 @@ export default function CafeSchedule() {
 
     console.log(`🔄 Processing ${timeLogs.length} time logs for ${employees.length} employees`);
 
-    // Process time logs
+    // Process time logs using the same grouping rule as employee-detail:
+    // group by clock_in local day so both screens stay consistent.
     const now = new Date();
     timeLogs.forEach((log, index) => {
       try {
@@ -208,33 +242,15 @@ export default function CafeSchedule() {
           return;
         }
 
-        // Check if log spans multiple days
-        if (clockOut && clockIn.toDateString() !== clockOut.toDateString()) {
-          // Split multi-day log
-          const splitLogs = splitMultiDayTimeLog(clockIn, clockOut);
-          
-          splitLogs.forEach(splitLog => {
-            const dayOfWeek = getDayOfWeek(splitLog.date);
-            const timeRange = formatTimeRange(splitLog.start, splitLog.end);
-            const hours = calculateHours(splitLog.start, splitLog.end, now);
+        const effectiveClockOut = getEffectiveClockOut(clockIn, clockOut, now);
+        const dayOfWeek = getDayOfWeek(clockIn);
+        const timeRange = formatTimeRange(clockIn, effectiveClockOut);
+        const hours = calculateHours(clockIn, effectiveClockOut, now);
 
-            if (employeeDataMap[log.user_id]) {
-const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][dayOfWeek] as keyof EmployeeTimeData;
-            (employeeDataMap[log.user_id][dayKey] as string[]).push(timeRange);
-            employeeDataMap[log.user_id].totalHours += hours;
-          }
-        });
-        } else {
-          // Single day log
-          const dayOfWeek = getDayOfWeek(clockIn);
-          const timeRange = formatTimeRange(clockIn, clockOut || now);
-          const hours = calculateHours(clockIn, clockOut, now);
-
-          if (employeeDataMap[log.user_id]) {
-            const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][dayOfWeek] as keyof EmployeeTimeData;
-            (employeeDataMap[log.user_id][dayKey] as string[]).push(timeRange);
-            employeeDataMap[log.user_id].totalHours += hours;
-          }
+        if (employeeDataMap[log.user_id]) {
+          const dayKey = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][dayOfWeek] as keyof EmployeeTimeData;
+          (employeeDataMap[log.user_id][dayKey] as string[]).push(timeRange);
+          employeeDataMap[log.user_id].totalHours += hours;
         }
       } catch (error) {
         console.error(`❌ Error processing log ${index}:`, error, log);

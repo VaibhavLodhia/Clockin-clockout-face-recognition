@@ -589,12 +589,49 @@ export default function EmployeeDetailScreen() {
     return grouped;
   }
 
+  function getAutoClockOutCutoff(clockIn: Date): Date | null {
+    const cafe = employee?.cafe_location;
+    const day = clockIn.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
+    const cutoff = new Date(clockIn);
+    cutoff.setSeconds(0, 0);
+
+    if (cafe === 'Hodge Hall') {
+      if (day >= 1 && day <= 4) {
+        cutoff.setHours(19, 30, 0, 0); // Mon-Thu 7:30 PM
+        return cutoff;
+      }
+      if (day === 5) {
+        cutoff.setHours(15, 30, 0, 0); // Fri 3:30 PM
+        return cutoff;
+      }
+      return null;
+    }
+
+    if (cafe === 'Read Cafe') {
+      cutoff.setHours(20, 30, 0, 0); // Sun-Sat 8:30 PM
+      return cutoff;
+    }
+
+    return null;
+  }
+
+  function getEffectiveClockOut(clockInValue: Date | string, clockOutValue: Date | string | null, now: Date): Date {
+    const clockIn = typeof clockInValue === 'string' ? new Date(clockInValue) : clockInValue;
+    const fallbackEnd = clockOutValue
+      ? (typeof clockOutValue === 'string' ? new Date(clockOutValue) : clockOutValue)
+      : now;
+    const cutoff = getAutoClockOutCutoff(clockIn);
+    if (!cutoff) return fallbackEnd;
+    return fallbackEnd > cutoff ? cutoff : fallbackEnd;
+  }
+
   function calculateTotalHours(): number {
     let total = 0;
     const now = new Date();
 
     timeLogs.forEach(log => {
-      const hours = calculateHours(log.clock_in, log.clock_out, now);
+      const effectiveClockOut = getEffectiveClockOut(log.clock_in, log.clock_out, now);
+      const hours = calculateHours(log.clock_in, effectiveClockOut, now);
       total += hours;
     });
 
@@ -630,6 +667,7 @@ export default function EmployeeDetailScreen() {
   const groupedLogs = groupTimeLogsByDay();
   const totalHours = calculateTotalHours();
   const daysWorked = calculateDaysWorked();
+  const renderNow = new Date();
 
   return (
     <ScrollView style={styles.container}>
@@ -735,7 +773,7 @@ export default function EmployeeDetailScreen() {
                         onPress={() => handleEditEntry(log)}
                       >
                         <Text style={styles.logTime}>
-                          {formatTimeRange(log.clock_in, log.clock_out)}
+                          {formatTimeRange(log.clock_in, getEffectiveClockOut(log.clock_in, log.clock_out, renderNow))}
                         </Text>
                         <Text style={styles.logVerified}>Verified: {log.verified_by}</Text>
                       </TouchableOpacity>
