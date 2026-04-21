@@ -1,5 +1,15 @@
 // Supabase Edge Function: Auto clock-out for Read Cafe
-// 8:30 PM every day (Sunday–Saturday)
+//
+// Design:
+// - Schedule this to run every 15 minutes (cron: "*/15 * * * *").
+// - For each currently-open time_log belonging to Read Cafe, compute the
+//   correct cutoff on that log's own clock_in NY date:
+//       Every day -> 20:30 America/New_York
+// - If NY wall-clock "now" is past that cutoff, close the log by writing
+//   clock_out = cutoff (converted to UTC ISO), verified_by = "auto".
+// - We never write new Date() as clock_out. A late run still produces a
+//   correct historical cutoff, so clock_out can never land on a different
+//   calendar day than clock_in.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.94.1";
@@ -10,26 +20,70 @@ export const config = {
 
 const DEFAULT_TIMEZONE = "America/New_York";
 
-function getLocalTimeParts(timeZone: string) {
-  const formatter = new Intl.DateTimeFormat("en-US", {
+type NyParts = {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  weekdayShort: string;
+};
+
+function getNyParts(date: Date, timeZone: string): NyParts {
+  const fmt = new Intl.DateTimeFormat("en-US", {
     timeZone,
     weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   });
-
-  const parts = formatter.formatToParts(new Date());
-  const partMap: Record<string, string> = {};
-  parts.forEach((part) => {
-    partMap[part.type] = part.value;
-  });
-
+  const parts = fmt.formatToParts(date);
+  const map: Record<string, string> = {};
+  for (const p of parts) map[p.type] = p.value;
   return {
-    weekday: partMap.weekday,
-    hour: partMap.hour,
-    minute: partMap.minute,
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: Number(map.hour === "24" ? "0" : map.hour),
+    minute: Number(map.minute),
+    weekdayShort: map.weekday,
   };
+}
+
+function nyWallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  timeZone: string,
+): Date {
+  for (const offsetHours of [4, 5]) {
+    const candidate = new Date(
+      Date.UTC(year, month - 1, day, hour + offsetHours, minute, 0, 0),
+    );
+    const p = getNyParts(candidate, timeZone);
+    if (
+      p.year === year &&
+      p.month === month &&
+      p.day === day &&
+      p.hour === hour &&
+      p.minute === minute
+    ) {
+      return candidate;
+    }
+  }
+  return new Date(Date.UTC(year, month - 1, day, hour + 4, minute, 0, 0));
+}
+
+function readCafeCutoffForClockIn(clockInIso: string, timeZone: string): Date {
+  const ci = new Date(clockInIso);
+  const p = getNyParts(ci, timeZone);
+  // Read Cafe: every day at 20:30 NY
+  return nyWallClockToUtc(p.year, p.month, p.day, 20, 30, timeZone);
 }
 
 serve(async (req) => {
@@ -45,34 +99,23 @@ serve(async (req) => {
     const url = new URL(req.url);
     const forceRun = url.searchParams.get("force_run") === "1";
 
-    const { hour, minute } = getLocalTimeParts(timeZone);
-    const time = `${hour}:${minute}`;
-
-    // Read Cafe: 8:30 PM every day (Sun–Sat)
-    let shouldRun = time === "20:30";
-    if (forceRun) shouldRun = true;
-
-    if (!shouldRun) {
-      return new Response("No action needed", { status: 200 });
-    }
-
     const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
     });
 
-    // 1) Get all open time logs (no join)
     const { data: openLogs, error: logsErr } = await serviceClient
       .from("time_logs")
-      .select("id, user_id, work_location")
+      .select("id, user_id, work_location, clock_in")
       .is("clock_out", null);
 
-    if (logsErr || !openLogs || openLogs.length === 0) {
-      return new Response(openLogs?.length === 0 ? "No open time logs" : "Failed to load time logs", { status: 200 });
+    if (logsErr) {
+      return new Response("Failed to load time logs", { status: 500 });
+    }
+    if (!openLogs || openLogs.length === 0) {
+      return new Response("No open time logs", { status: 200 });
     }
 
-    const userIds = [...new Set(openLogs.map((r: { user_id: string }) => r.user_id))];
-
-    // 2) Get cafe_location for those users (separate query)
+    const userIds = [...new Set(openLogs.map((r) => r.user_id))];
     const { data: users, error: usersErr } = await serviceClient
       .from("users")
       .select("id, cafe_location")
@@ -83,54 +126,85 @@ serve(async (req) => {
     }
 
     const cafeByUserId: Record<string, string | null> = {};
-    users.forEach((u: { id: string; cafe_location: string | null }) => {
+    for (const u of users as Array<{ id: string; cafe_location: string | null }>) {
       cafeByUserId[u.id] = u.cafe_location || null;
-    });
-
-    // 3) Read Cafe: clock out if work_location = 'Read Cafe' OR (work_location null and user cafe = 'Read Cafe')
-    const readLogIds: string[] = [];
-    openLogs.forEach((log: { id: string; user_id: string; work_location: string | null }) => {
-      const wrk = log.work_location;
-      const cafe = cafeByUserId[log.user_id];
-      if (wrk === "Read Cafe" || (wrk === null && cafe === "Read Cafe")) {
-        readLogIds.push(log.id);
-      }
-    });
-
-    if (readLogIds.length === 0) {
-      return new Response("No Read Cafe time logs to clock out", { status: 200 });
     }
 
-    const { error: updateError, data: updatedLogs } = await serviceClient
-      .from("time_logs")
-      .update({
-        clock_out: new Date().toISOString(),
-        verified_by: "auto",
-      })
-      .in("id", readLogIds)
-      .select("id");
+    // Filter to Read Cafe logs:
+    //   work_location = "Read Cafe"
+    //   OR (work_location null AND user home cafe = "Read Cafe")  -- legacy safety net
+    const readLogs = openLogs.filter((log) => {
+      const wrk = log.work_location as string | null;
+      const cafe = cafeByUserId[log.user_id];
+      return wrk === "Read Cafe" || (wrk === null && cafe === "Read Cafe");
+    });
 
-    const employeeIds = [...new Set(openLogs.filter((l: { id: string }) => readLogIds.includes(l.id)).map((l: { user_id: string }) => l.user_id))];
+    if (readLogs.length === 0) {
+      return new Response("No Read Cafe open logs", { status: 200 });
+    }
 
-    if (updateError) {
-      return new Response("Failed to update time logs", { status: 500 });
+    const now = new Date();
+    const toUpdate: Array<{ id: string; clock_out_iso: string }> = [];
+    const notYetDue: string[] = [];
+
+    for (const log of readLogs) {
+      const cutoff = readCafeCutoffForClockIn(log.clock_in as string, timeZone);
+      if (forceRun || now.getTime() >= cutoff.getTime()) {
+        toUpdate.push({ id: log.id as string, clock_out_iso: cutoff.toISOString() });
+      } else {
+        notYetDue.push(log.id as string);
+      }
+    }
+
+    if (toUpdate.length === 0) {
+      return new Response(
+        `No Read Cafe logs to close (not_yet_due=${notYetDue.length})`,
+        { status: 200 },
+      );
+    }
+
+    let updated = 0;
+    const failures: Array<{ id: string; error: string }> = [];
+    for (const row of toUpdate) {
+      const { error: updErr } = await serviceClient
+        .from("time_logs")
+        .update({
+          clock_out: row.clock_out_iso,
+          verified_by: "auto",
+        })
+        .eq("id", row.id)
+        .is("clock_out", null);
+      if (updErr) {
+        failures.push({ id: row.id, error: updErr.message });
+      } else {
+        updated++;
+      }
     }
 
     await serviceClient.rpc("log_audit_event", {
       p_action: "auto_clock_out",
-      p_performed_by: employeeIds[0] || null,
+      p_performed_by: null,
       p_target_user: null,
       p_metadata: {
         cafe: "Read Cafe",
-        updated: updatedLogs?.length || 0,
+        updated,
+        failures: failures.length,
+        not_yet_due: notYetDue.length,
         time_zone: timeZone,
-        time,
+        force_run: forceRun,
       },
     });
 
-    const msg = `Auto clock-out complete: ${updatedLogs?.length || 0}${forceRun ? " (force_run test)" : ""}`;
-    return new Response(msg, { status: 200 });
-  } catch (_error) {
-    return new Response("Unhandled error", { status: 500 });
+    return new Response(
+      JSON.stringify({
+        updated,
+        failures,
+        not_yet_due: notYetDue.length,
+        force_run: forceRun,
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  } catch (error) {
+    return new Response(`Unhandled error: ${(error as Error).message}`, { status: 500 });
   }
 });

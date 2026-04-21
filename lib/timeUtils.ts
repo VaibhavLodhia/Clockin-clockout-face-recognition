@@ -38,9 +38,9 @@ export function formatTimeRange(start: Date | string, end: Date | string | null)
 export function calculateHours(start: Date | string, end: Date | string | null, currentTime?: Date): number {
   const startDate = typeof start === 'string' ? new Date(start) : start;
   const endDate = end ? (typeof end === 'string' ? new Date(end) : end) : (currentTime || new Date());
-  
+
   const diffMs = endDate.getTime() - startDate.getTime();
-  return diffMs / (1000 * 60 * 60); // Convert to hours
+  return diffMs / (1000 * 60 * 60);
 }
 
 export function formatHours(hours: number): string {
