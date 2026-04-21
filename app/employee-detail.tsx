@@ -589,8 +589,8 @@ export default function EmployeeDetailScreen() {
     return grouped;
   }
 
-  function getAutoClockOutCutoff(clockIn: Date): Date | null {
-    const cafe = employee?.cafe_location;
+  function getAutoClockOutCutoff(clockIn: Date, cafe: string | null): Date | null {
+    if (!cafe) return null;
     const day = clockIn.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
     const cutoff = new Date(clockIn);
     cutoff.setSeconds(0, 0);
@@ -615,14 +615,25 @@ export default function EmployeeDetailScreen() {
     return null;
   }
 
-  function getEffectiveClockOut(clockInValue: Date | string, clockOutValue: Date | string | null, now: Date): Date {
+  function getEffectiveClockOut(
+    clockInValue: Date | string,
+    clockOutValue: Date | string | null,
+    now: Date,
+    workLocation: string | null
+  ): Date {
     const clockIn = typeof clockInValue === 'string' ? new Date(clockInValue) : clockInValue;
-    const fallbackEnd = clockOutValue
-      ? (typeof clockOutValue === 'string' ? new Date(clockOutValue) : clockOutValue)
-      : now;
-    const cutoff = getAutoClockOutCutoff(clockIn);
-    if (!cutoff) return fallbackEnd;
-    return fallbackEnd > cutoff ? cutoff : fallbackEnd;
+
+    // Completed logs: trust the stored clock_out as-is.
+    if (clockOutValue) {
+      return typeof clockOutValue === 'string' ? new Date(clockOutValue) : clockOutValue;
+    }
+
+    // Open logs: cap at the cutoff for the cafe they actually clocked in at
+    // (fallback to the employee's home cafe).
+    const cafe = workLocation || employee?.cafe_location || null;
+    const cutoff = getAutoClockOutCutoff(clockIn, cafe);
+    if (!cutoff) return now;
+    return now > cutoff ? cutoff : now;
   }
 
   function calculateTotalHours(): number {
@@ -630,7 +641,12 @@ export default function EmployeeDetailScreen() {
     const now = new Date();
 
     timeLogs.forEach(log => {
-      const effectiveClockOut = getEffectiveClockOut(log.clock_in, log.clock_out, now);
+      const effectiveClockOut = getEffectiveClockOut(
+        log.clock_in,
+        log.clock_out,
+        now,
+        log.work_location || null
+      );
       const hours = calculateHours(log.clock_in, effectiveClockOut, now);
       total += hours;
     });
@@ -773,7 +789,7 @@ export default function EmployeeDetailScreen() {
                         onPress={() => handleEditEntry(log)}
                       >
                         <Text style={styles.logTime}>
-                          {formatTimeRange(log.clock_in, getEffectiveClockOut(log.clock_in, log.clock_out, renderNow))}
+                          {formatTimeRange(log.clock_in, getEffectiveClockOut(log.clock_in, log.clock_out, renderNow, log.work_location || null))}
                         </Text>
                         <Text style={styles.logVerified}>Verified: {log.verified_by}</Text>
                       </TouchableOpacity>

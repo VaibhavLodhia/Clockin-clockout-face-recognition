@@ -169,13 +169,13 @@ export default function CafeSchedule() {
     setTimeLogs(data || []);
   }
 
-  function getAutoClockOutCutoff(clockIn: Date): Date | null {
-    if (!selectedCafe) return null;
+  function getAutoClockOutCutoff(clockIn: Date, cafe: string | null): Date | null {
+    if (!cafe) return null;
     const day = clockIn.getDay(); // 0=Sun, 1=Mon, ... 6=Sat
     const cutoff = new Date(clockIn);
     cutoff.setSeconds(0, 0);
 
-    if (selectedCafe === 'Hodge Hall') {
+    if (cafe === 'Hodge Hall') {
       if (day >= 1 && day <= 4) {
         cutoff.setHours(19, 30, 0, 0); // Mon-Thu 7:30 PM
         return cutoff;
@@ -187,7 +187,7 @@ export default function CafeSchedule() {
       return null;
     }
 
-    if (selectedCafe === 'Read Cafe') {
+    if (cafe === 'Read Cafe') {
       cutoff.setHours(20, 30, 0, 0); // Sun-Sat 8:30 PM
       return cutoff;
     }
@@ -195,11 +195,22 @@ export default function CafeSchedule() {
     return null;
   }
 
-  function getEffectiveClockOut(clockIn: Date, clockOut: Date | null, now: Date): Date {
-    const fallbackEnd = clockOut || now;
-    const cutoff = getAutoClockOutCutoff(clockIn);
-    if (!cutoff) return fallbackEnd;
-    return fallbackEnd > cutoff ? cutoff : fallbackEnd;
+  function getEffectiveClockOut(
+    clockIn: Date,
+    clockOut: Date | null,
+    now: Date,
+    workLocation: string | null,
+    homeCafe: string | null
+  ): Date {
+    // Completed logs: trust the stored clock_out as-is.
+    if (clockOut) return clockOut;
+
+    // Open logs: cap at the auto-clockout cutoff for the location they clocked in at
+    // (fallback to their home cafe if work_location is missing).
+    const cafe = workLocation || homeCafe;
+    const cutoff = getAutoClockOutCutoff(clockIn, cafe);
+    if (!cutoff) return now;
+    return now > cutoff ? cutoff : now;
   }
 
   function processTimeLogsForTable(): EmployeeTimeData[] {
@@ -242,7 +253,15 @@ export default function CafeSchedule() {
           return;
         }
 
-        const effectiveClockOut = getEffectiveClockOut(clockIn, clockOut, now);
+        const homeCafe =
+          employees.find(e => e.id === log.user_id)?.cafe_location || null;
+        const effectiveClockOut = getEffectiveClockOut(
+          clockIn,
+          clockOut,
+          now,
+          log.work_location || null,
+          homeCafe
+        );
         const dayOfWeek = getDayOfWeek(clockIn);
         const timeRange = formatTimeRange(clockIn, effectiveClockOut);
         const hours = calculateHours(clockIn, effectiveClockOut, now);
