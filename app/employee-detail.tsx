@@ -622,18 +622,18 @@ export default function EmployeeDetailScreen() {
     workLocation: string | null
   ): Date {
     const clockIn = typeof clockInValue === 'string' ? new Date(clockInValue) : clockInValue;
+    const fallbackEnd = clockOutValue
+      ? (typeof clockOutValue === 'string' ? new Date(clockOutValue) : clockOutValue)
+      : now;
 
-    // Completed logs: trust the stored clock_out as-is.
-    if (clockOutValue) {
-      return typeof clockOutValue === 'string' ? new Date(clockOutValue) : clockOutValue;
-    }
-
-    // Open logs: cap at the cutoff for the cafe they actually clocked in at
-    // (fallback to the employee's home cafe).
+    // Cap to the auto-clockout cutoff for the cafe they actually clocked in at
+    // (fallback to the employee's home cafe). This protects against bad data
+    // where a shift runs past its cutoff (e.g. edge function missed, forgot to
+    // clock out). On days with no cutoff (weekends for Hodge), trust the value.
     const cafe = workLocation || employee?.cafe_location || null;
     const cutoff = getAutoClockOutCutoff(clockIn, cafe);
-    if (!cutoff) return now;
-    return now > cutoff ? cutoff : now;
+    if (!cutoff) return fallbackEnd;
+    return fallbackEnd > cutoff ? cutoff : fallbackEnd;
   }
 
   function calculateTotalHours(): number {

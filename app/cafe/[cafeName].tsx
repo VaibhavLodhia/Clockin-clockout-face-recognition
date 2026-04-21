@@ -202,15 +202,15 @@ export default function CafeSchedule() {
     workLocation: string | null,
     homeCafe: string | null
   ): Date {
-    // Completed logs: trust the stored clock_out as-is.
-    if (clockOut) return clockOut;
+    const fallbackEnd = clockOut || now;
 
-    // Open logs: cap at the auto-clockout cutoff for the location they clocked in at
-    // (fallback to their home cafe if work_location is missing).
+    // Cap to the auto-clockout cutoff for the location they actually clocked in at
+    // (fallback to their home cafe). This protects against bad data where a shift
+    // runs past its cutoff. On days with no cutoff (weekends for Hodge), trust it.
     const cafe = workLocation || homeCafe;
     const cutoff = getAutoClockOutCutoff(clockIn, cafe);
-    if (!cutoff) return now;
-    return now > cutoff ? cutoff : now;
+    if (!cutoff) return fallbackEnd;
+    return fallbackEnd > cutoff ? cutoff : fallbackEnd;
   }
 
   function processTimeLogsForTable(): EmployeeTimeData[] {
